@@ -504,7 +504,8 @@ html,body{overflow:hidden}
 .acts .btn:not(.big) .ar{font-size:14px}
 .acts .btn.big{min-height:76px}
 .acts .aiwait{min-height:76px;padding:6px 10px;text-align:center}
-.dres{bottom:auto;top:61%}
+.dres{bottom:auto;top:66%}
+.boardwrap:not(.m3d) .dres{display:none}
 .turnpop{top:27%}
 .banner{top:43%}
 @media (min-width:880px){
@@ -541,6 +542,42 @@ html,body{overflow:hidden}
 .cd{display:inline-block;margin-inline-start:6px;font-family:var(--g-disp);font-size:.85em;background:rgba(0,0,0,.18);padding:0 8px;border-radius:99px;font-weight:400}
 .btn.urgent{--d:var(--g-red-d)!important;background:linear-gradient(180deg,#ff8794,var(--g-red))!important;animation:urg .6s ease-in-out infinite!important}
 @keyframes urg{50%{transform:scale(1.04)}}
+
+/* ---------- 3D avatars, landing cards, name tags ---------- */
+.ptok.has-av{background:radial-gradient(circle at 50% 35%,#fff 0,#e6f2ff 70%);border:3px solid var(--pc,#fff);overflow:hidden}
+.ptok img.av{width:120%;height:120%;object-fit:contain;margin-top:6%;pointer-events:none}
+.pchip .ptok.has-av{width:38px;height:38px}
+.tags{position:absolute;inset:0;pointer-events:none;z-index:4;overflow:hidden}
+.landtag,.landcard{background:#fff;color:var(--g-ink);border-radius:16px;padding:0 14px 8px;text-align:center;min-width:130px;max-width:220px;box-shadow:0 0 0 3px var(--tc),0 5px 0 var(--tc),0 12px 22px rgba(0,0,0,.28);overflow:visible}
+.landtag{position:absolute;left:0;top:0;will-change:transform}
+.landtag>*,.landcard>*{animation:tagin .5s cubic-bezier(.2,1.6,.4,1) both}
+.landtag::before,.landcard::before{content:'';display:block;height:9px;margin:0 -14px 6px;border-radius:13px 13px 0 0;background:var(--tc)}
+.landtag::after{content:'';position:absolute;left:50%;bottom:-13px;margin-left:-8px;border:8px solid transparent;border-top-color:var(--tc)}
+.landtag .li,.landcard .li{display:block;font-size:20px;line-height:1;margin-bottom:2px}
+.landtag b,.landcard b{display:block;font-family:var(--g-disp);font-weight:400;font-size:19px;line-height:1.15}
+.landtag small,.landcard small{display:block;font-weight:800;color:var(--g-green-d);font-size:12.5px;margin-top:2px}
+.landtag.out{animation:tagout .4s forwards}
+@keyframes tagin{from{opacity:0;transform:scale(.4) translateY(14px)}}
+@keyframes tagout{to{opacity:0}}
+.landcard{position:absolute;left:50%;top:24%;transform:translateX(-50%);z-index:6;pointer-events:none}
+.nametag{position:absolute;left:0;top:0;background:var(--pc);color:#fff;font-weight:800;font-size:12.5px;padding:2px 10px;border-radius:99px;border:2px solid #fff;box-shadow:0 3px 0 rgba(0,0,0,.22);white-space:nowrap;text-shadow:0 1px 0 rgba(0,0,0,.3);will-change:transform}
+/* ---------- 2D board with depth and stronger colour ---------- */
+.board{background:linear-gradient(135deg,#3a8dff,#1f5fcf)}
+.tile{box-shadow:inset 0 -.55cqw 0 rgba(22,48,74,.14),inset 0 .25cqw 0 #fff}
+.corner{background:linear-gradient(135deg,#fffbe6,#ffe58f)}
+.c-go{background:linear-gradient(135deg,#ffd6db,#ff9eaa)}
+.c-go .ar{color:#b3121c;font-family:var(--g-disp);font-weight:400}
+.cx .ci{font-size:5.8cqw}
+.cx .ar{font-size:2.3cqw}
+.b .bar,.t .bar{height:3.9cqw}
+.l .bar,.r .bar{width:3.9cqw}
+.bar{box-shadow:inset 0 -.45cqw 0 rgba(0,0,0,.2),inset 0 .35cqw 0 rgba(255,255,255,.4)}
+.tx .ar{font-size:2.05cqw;line-height:1.05}
+.tx .pr{font-size:1.65cqw;background:#e6fbe9;padding:0 .7cqw;border-radius:.7cqw}
+.tx .ico{font-size:3.1cqw}
+.center{background:radial-gradient(circle at 50% 42%,#c4f7d3 0,#5fd08a 58%,#2aa95e 100%);box-shadow:inset 0 0 0 .5cqw rgba(255,255,255,.55)}
+.tk{width:4.6cqw;height:4.6cqw;font-size:2.7cqw;border-width:.45cqw}
+.tile.here{box-shadow:inset 0 0 0 .7cqw var(--g-yellow),0 0 2.4cqw var(--g-yellow);z-index:2}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 
@@ -973,6 +1010,7 @@ async function landOn(p, dice, mod = {}) {
   if (p.bk) return;
   const i = p.pos, s = B[i];
   if (V3) V3.flash(i, '#f2cd72');
+  FX.land(i, p.id);
   if (OWN(s)) {
     const st = S.props[i];
     if (st.o === null) return offerBuy(p, i);
@@ -1159,8 +1197,30 @@ async function aiAct() {
   }
   if (S.phase === 'post') {
     aiManage(p); render();
+    await aiTrade(p);
+    if (busy || cp() !== p || S.phase !== 'post') return;
     if (S.canRoll) return doRoll();
     return endTurn();
+  }
+}
+// a computer one property short of a full colour set offers cash for it (at most every few turns)
+async function aiTrade(p) {
+  if (S.turn - (p.lastTrade || -99) < 4) return;
+  for (const g in GROUPS) {
+    const G = GROUPS[g], mine = G.filter(i => S.props[i].o === p.id);
+    if (mine.length !== G.length - 1) continue;
+    const miss = G.find(i => S.props[i].o !== p.id), st = S.props[miss];
+    if (st.o === null || groupHasB(miss)) continue;
+    const q = P(st.o); if (!q || q.bk) continue;
+    const offer = Math.min(p.cash - 150, Math.round(B[miss].p * 1.9 / 10) * 10);
+    if (offer < B[miss].p * 1.2) continue;
+    const o = {from:p, to:q, A:[], B:[miss], cA:offer, cB:0, gA:0, gB:0};
+    if (!tradeValid(o)) continue;
+    p.lastTrade = S.turn;
+    say(`🤝 ${pn(p)} بيعرض ${money(offer)} على ${pn(q)} مقابل ${B[miss].ar}`, `🤝 ${pn(p)} offers ${pn(q)} ${money(offer)} for ${B[miss].en}`);
+    render();
+    await proposeTrade(o);
+    return;
   }
 }
 function strength(pid, own) {
@@ -1172,6 +1232,11 @@ function strength(pid, own) {
 }
 function aiAccepts(o) {
   const ai = o.to, pr = o.from;
+  // a plain cash offer for one lot: take it when it pays well and the lot is not part of our own near-set
+  if (!o.A.length && o.B.length === 1 && !o.gA && !o.gB && !o.cB) {
+    const i = o.B[0], s = B[i], mineIn = s.t === 'prop' ? GROUPS[s.g].filter(j => S.props[j].o === ai.id).length : 0;
+    if (o.cA >= s.p * 1.8 && mineIn <= 1) return true;
+  }
   const after = i => o.A.includes(i) ? ai.id : o.B.includes(i) ? pr.id : S.props[i].o;
   const before = i => S.props[i].o;
   const dAi = strength(ai.id, after) - strength(ai.id, before) + o.cA - o.cB + (o.gA - o.gB) * 50;
@@ -1464,7 +1529,7 @@ function renderPlayers() {
   if (cashSeen.S !== S) { cashSeen.S = S; cashSeen.v = S.players.map(p => p.cash); cashShown = S.players.map(p => p.cash); }
   $('#players').style.gridTemplateColumns = `repeat(${n > 4 ? 3 : n}, minmax(0,1fr))`;
   $('#players').innerHTML = S.players.map(p => `<button class="pchip ${p.id === S.cur && S.phase !== 'over' ? 'on' : ''} ${p.bk ? 'bk' : ''}" data-pl="${p.id}" style="--pc:${p.col}">
-    <span class="ptok">${p.tok}</span><span class="pinfo"><span class="pname">${pn(p)}${p.human ? '' : ' 🤖'}</span><span class="pcash" data-k="${p.id}">${p.bk ? L('مفلس', 'Bankrupt') : money(cashShown[p.id] ?? p.cash)}</span></span>${p.jail ? '<span class="pj">🔒</span>' : ''}</button>`).join('');
+    <span class="ptok has-av">${avHTML(p)}</span><span class="pinfo"><span class="pname">${pn(p)}${p.human ? '' : ' 🤖'}</span><span class="pcash" data-k="${p.id}">${p.bk ? L('مفلس', 'Bankrupt') : money(cashShown[p.id] ?? p.cash)}</span></span>${p.jail ? '<span class="pj">🔒</span>' : ''}</button>`).join('');
   S.players.forEach((p, k) => {
     const d = p.cash - (cashSeen.v[k] ?? p.cash);
     if (d) { const el = $('#players').children[k]; if (el) FX.fly(el, (d > 0 ? '+' : '−') + money(Math.abs(d)), d > 0); }
@@ -1472,6 +1537,18 @@ function renderPlayers() {
   });
   if (!cashRaf && S.players.some(p => (cashShown[p.id] ?? p.cash) !== p.cash)) cashRaf = requestAnimationFrame(tickCash);
 }
+function landColor(i) { const s = B[i]; return s.t === 'prop' ? GRP[s.g].c : s.t === 'go' ? '#ff5b6b' : s.t === 'chance' ? '#ffb020' : s.t === 'chest' ? '#3d8eff' : s.t === 'tax' ? '#8b5cf6' : '#16304a'; }
+function landHTML(i) {
+  const s = B[i], st = S.props[i];
+  let sub = '';
+  if (OWN(s)) sub = st && st.o !== null ? `${L('ملك', 'Owner:')} ${pn(P(st.o))}${st.m ? ' · ' + L('مرهون', 'mortgaged') : ''}` : `${L('للبيع', 'For sale')} · ${money(s.p)}`;
+  else if (s.t === 'tax') sub = `${L('ادفع', 'Pay')} ${money(s.amt)}`;
+  else if (s.t === 'go') sub = L('+$200', '+$200');
+  else if (s.t === 'jail') sub = L('زيارة فقط', 'Just visiting');
+  return `<span class="li">${s.ico || ''}</span><b>${L(s.ar, s.en)}</b>${sub ? `<small>${sub}</small>` : ''}`;
+}
+// player picture: the 3D piece when the 3D view is available, the emoji otherwise
+function avHTML(p) { const url = V3 && V3ready ? V3.avatar(p.tok, p.col) : null; return url ? `<img class="av" src="${url}" alt="">` : p.tok; }
 const AUTO_END = 60000;
 // ms left before the turn ends by itself, or -1 when no countdown is running
 function endLeft() {
@@ -1831,7 +1908,7 @@ const V3 = (() => {
     }
     // normalise size: fit inside 0.46 wide x 0.62 tall, base on the board
     const box = new T.Box3().setFromObject(g), size = new T.Vector3(); box.getSize(size);
-    const sc = Math.min(.6 / Math.max(size.x, size.z), .78 / size.y);
+    const sc = Math.min(.66 / Math.max(size.x, size.z), .86 / size.y);
     g.scale.setScalar(sc);
     const box2 = new T.Box3().setFromObject(g);
     g.position.y = -box2.min.y;
@@ -1841,6 +1918,12 @@ const V3 = (() => {
   }
   function makePawn(p) {
     const m = tokenModel(p.tok, p.col);
+    const ped = new T.Group();
+    const band = new T.Mesh(new T.CylinderGeometry(.33, .35, .05, 36), new T.MeshStandardMaterial({color:p.col, roughness:.35, metalness:.2}));
+    band.position.y = .025;
+    const top = new T.Mesh(new T.CylinderGeometry(.29, .31, .05, 36), new T.MeshStandardMaterial({color:0xffffff, roughness:.3}));
+    top.position.y = .07; band.castShadow = top.castShadow = true;
+    ped.add(band, top); m.outer.add(ped); m.inner.position.y = .095;
     scene.add(m.outer);
     return {g:m.outer, inner:m.inner, cur:new T.Vector3(), last:null, from:null, to:null, t0:0, dur:0, far:false, yaw:0, yawT:0, sc:1, scT:1};
   }
@@ -1858,6 +1941,63 @@ const V3 = (() => {
   }
 
 
+
+  /* --- 3D avatars: each player's piece rendered once into a small picture for the HUD --- */
+  let avR = null, avS = null, avC = null; const avCache = {};
+  function avatar(tok, col) {
+    const key = tok + col; if (avCache[key] !== undefined) return avCache[key];
+    try {
+      if (!avR) {
+        avR = new T.WebGLRenderer({antialias:true, alpha:true, preserveDrawingBuffer:true});
+        avR.setPixelRatio(1); avR.setSize(160, 160, false); avR.outputEncoding = T.sRGBEncoding; avR.setClearColor(0x000000, 0);
+        avS = new T.Scene(); avS.add(new T.HemisphereLight(0xffffff, 0x445566, .55));
+        const d = new T.DirectionalLight(0xffffff, .95); d.position.set(2, 4, 3); avS.add(d);
+        const d2 = new T.DirectionalLight(0xcfe8ff, .35); d2.position.set(-3, 1, -2); avS.add(d2);
+        avC = new T.PerspectiveCamera(30, 1, .1, 20); avC.position.set(1.25, .95, 1.5); avC.lookAt(0, .4, 0);
+      }
+      const m = tokenModel(tok, col);
+      m.outer.traverse(o => { if (o.material && o.material.metalness !== undefined) { o.material.metalness = Math.min(o.material.metalness, .2); o.material.roughness = Math.max(o.material.roughness, .35); if (o.material.emissiveIntensity) o.material.emissiveIntensity = .04; } });
+      m.inner.rotation.y = -.5; avS.add(m.outer); avR.render(avS, avC);
+      const url = avR.domElement.toDataURL('image/png');
+      avS.remove(m.outer); m.outer.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
+      return (avCache[key] = url);
+    } catch { return (avCache[key] = null); }
+  }
+  let tagsEl = null, nameEl = null, nameFor = null; const landTags = [];
+  const tagLayer = () => { if (!tagsEl) { tagsEl = document.createElement('div'); tagsEl.className = 'tags'; wrapEl.appendChild(tagsEl); } return tagsEl; };
+  const proj = new T.Vector3();
+  function toScreen(v) { proj.copy(v).project(cam); const c = R.domElement; return {x:(proj.x + 1) / 2 * c.clientWidth, y:(1 - proj.y) / 2 * c.clientHeight, vis:proj.z < 1}; }
+  function clampTag(sc, el) {
+    const c = R.domElement, w = el.offsetWidth || 120, h = el.offsetHeight || 50, m = 8;
+    sc.x = Math.max(w / 2 + m, Math.min(c.clientWidth - w / 2 - m, sc.x));
+    sc.y = Math.max(h + m, Math.min(c.clientHeight - m, sc.y));
+    return sc;
+  }
+  function landTag(i, pid) {
+    if (!ok || !active) return;
+    const el = document.createElement('div'); el.className = 'landtag'; el.style.setProperty('--tc', landColor(i)); el.innerHTML = landHTML(i);
+    tagLayer().appendChild(el);
+    landTags.forEach(t => { if (t.pid === pid) t.el.remove(); });
+    landTags.push({el, pid, i, t0:performance.now()});
+  }
+  function tagStep(now) {
+    if (!tagsEl && !landTags.length) return;
+    for (let k = landTags.length - 1; k >= 0; k--) {
+      const t = landTags[k], age = now - t.t0, pw = pawns[t.pid];
+      const at = pw ? pw.cur.clone().setY(pw.cur.y + 1.25) : (() => { const c = center(t.i); return new T.Vector3(c.x, 1.1, c.z); })();
+      const sc = clampTag(toScreen(at), t.el);
+      t.el.style.transform = `translate(${sc.x}px,${sc.y}px) translate(-50%,-100%)`;
+      if (age > 2600 && !t.el.classList.contains('out')) t.el.classList.add('out');
+      if (age > 3000 || !t.el.isConnected) { t.el.remove(); landTags.splice(k, 1); }
+    }
+    const cpw = curId !== null ? pawns[curId] : null, p = curId !== null && S ? S.players[curId] : null;
+    if (cpw && p && !p.bk && !landTags.some(t => t.pid === curId)) {
+      if (!nameEl) { nameEl = document.createElement('div'); nameEl.className = 'nametag'; tagLayer().appendChild(nameEl); }
+      if (nameFor !== p.id + p.name) { nameFor = p.id + p.name; nameEl.textContent = p.name; nameEl.style.setProperty('--pc', p.col); }
+      const sc = clampTag(toScreen(cpw.cur.clone().setY(cpw.cur.y + 1.15)), nameEl);
+      nameEl.style.transform = `translate(${sc.x}px,${sc.y}px) translate(-50%,-100%)`; nameEl.hidden = !sc.vis;
+    } else if (nameEl) nameEl.hidden = true;
+  }
 
   /* --- dice --- */
   const FACE = {1:[0,0], 6:[Math.PI,0], 2:[-Math.PI/2,0], 5:[Math.PI/2,0], 3:[0,Math.PI/2], 4:[0,-Math.PI/2]};
@@ -2270,7 +2410,7 @@ const V3 = (() => {
     // ambient sparkles drifting over the board
     dustAcc += dt * (HQ ? 5 : 2);
     while (dustAcc > 1 && !reduce) { dustAcc--; emit((Math.random() - .5) * 13, .2 + Math.random() * 1.5, (Math.random() - .5) * 13, (Math.random() - .5) * .08, .12 + Math.random() * .15, (Math.random() - .5) * .08, Math.random() < .7 ? '#ffd23a' : '#ffffff', .06 + Math.random() * .05, 4 + Math.random() * 3, 0); }
-    psStep(dt); coinStep(now); fxStep(now, dt);
+    psStep(dt); coinStep(now); fxStep(now, dt); tagStep(now);
     if (sea) sea.material.uniforms.t.value = now / 1000;
     palms.forEach(p => { p.crown.rotation.z = Math.sin(now / 900 + p.ph) * .06; p.crown.rotation.x = Math.cos(now / 1100 + p.ph) * .04; });
     if (clouds) clouds.rotation.y = now / 90000;
@@ -2357,7 +2497,8 @@ const V3 = (() => {
     toggleCam() { camMode = CAMS[(CAMS.indexOf(camMode) + 1) % CAMS.length]; store.set('monopoly-sy-cam2', camMode); userHold = 0; return camMode; },
     get hq() { return HQ; },
     setHQ(v) { HQ = !!v; store.set('monopoly-sy-hq', HQ ? 'high' : 'low'); if (!ok) return; applyQuality(); makeBoardTexture(); texSig = ''; sync(); },
-    setActive(v) { active = !!v && ok; if (active) { resize(); sync(); } }
+    setActive(v) { active = !!v && ok; if (tagsEl) tagsEl.hidden = !active; if (active) { resize(); sync(); } },
+    avatar, landTag
   };
 })();
 let V3ready = false, view3d = store.get('monopoly-sy-view') !== '2d';
@@ -2502,11 +2643,18 @@ const FX = {
     el.hidden = false; el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
     clearTimeout(FX.dice.t); FX.dice.t = setTimeout(() => { el.hidden = true; }, 3600);
   },
+  land(i, pid) {
+    if (V3 && V3.on()) return V3.landTag(i, pid);
+    const w = $('.boardwrap'); if (!w || !S) return;
+    w.querySelectorAll('.landcard').forEach(b => b.remove());
+    const d = document.createElement('div'); d.className = 'landcard'; d.style.setProperty('--tc', landColor(i)); d.innerHTML = landHTML(i);
+    w.appendChild(d); setTimeout(() => d.remove(), 2800);
+  },
   turn(p) {
     const w = $('.boardwrap'); if (!w || !p) return;
     w.querySelectorAll('.turnpop').forEach(b => b.remove());
     const d = document.createElement('div'); d.className = 'turnpop'; d.style.setProperty('--pc', p.col);
-    d.innerHTML = `<span class="ptok">${p.tok}</span><span>${L('دور', 'Turn:')} <b>${pn(p)}</b></span>`;
+    d.innerHTML = `<span class="ptok has-av" style="--pc:${p.col}">${avHTML(p)}</span><span>${L('دور', 'Turn:')} <b>${pn(p)}</b></span>`;
     w.appendChild(d); setTimeout(() => d.remove(), 1900);
   },
   banner(text, color) {
@@ -2998,6 +3146,7 @@ const NET = {
       else if (k === 'b') ORIG.banner(L(a, b), c);
       else if (k === 'd') ORIG.dice(a, b);
       else if (k === 't') ORIG.turn(S.players[a]);
+      else if (k === 'land') { if (B[a]) ORIG.land(a, b); }
       else if (k === 'cf') ORIG.confetti(a);
       else if (k === 'fl') ORIG.flash(a);
       else if (k === 'bz') ORIG.buzz(a);
@@ -3022,6 +3171,8 @@ SFX.play = n => { ORIG.sfx(n); if (n !== 'click') NET.fx(['s', n]); };
 FX.bannerL = (ar, en, color) => { ORIG.banner(L(ar, en), color); NET.fx(['b', ar, en, color || null]); };
 FX.dice = (a, b) => { ORIG.dice(a, b); NET.fx(['d', a, b]); };
 FX.turn = p => { ORIG.turn(p); if (p) NET.fx(['t', p.id]); };
+ORIG.land = FX.land.bind(FX);
+FX.land = (i, pid) => { ORIG.land(i, pid); NET.fx(['land', i, pid]); };
 FX.confetti = n => { ORIG.confetti(n); NET.fx(['cf', n]); };
 FX.flash = c => { ORIG.flash(c); NET.fx(['fl', c]); };
 FX.buzz = p => { ORIG.buzz(p); NET.fx(['bz', p]); };
@@ -3171,6 +3322,8 @@ function start(data) {
   };
   if (data && data.S) go(); else showLang(go);
 }
+// test hook for automated play-throughs only (#dev in the link)
+if (location.hash === '#dev' || window.__devWanted) window.__dev = {get S() { return S; }, render, endTurn};
 window.claude?.hot?.snapshot?.(() => ({S: lastStable ? JSON.parse(lastStable) : null}));
 window.claude?.hot?.ready ? window.claude.hot.ready(start) : start(window.claude?.hot?.data ?? {});
 })();
