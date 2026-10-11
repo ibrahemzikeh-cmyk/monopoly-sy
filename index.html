@@ -360,7 +360,7 @@ button{font:inherit;color:inherit}
 <div id="toast" hidden></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js" onerror="var s=document.createElement('script');s.src='https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';document.head.appendChild(s)"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/5.10.1/mqtt.min.js" onerror="var s=document.createElement('script');s.src='https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js';document.head.appendChild(s)"></script>
 <script>
 (() => {
 'use strict';
@@ -2290,85 +2290,80 @@ function showSetup(canCancel) {
   };
 }
 
-/* ---------- direct phone-to-phone rooms (WebRTC via PeerJS), for friends without a Claude account ----------
-   Same shape as the room capability's named room, so the online code above runs unchanged:
-   the host's phone is the hub and relays everyone's presence to everyone. */
-const P2P = {
-  ok: () => typeof window.Peer === 'function',
+/* ---------- relay rooms over public MQTT brokers, for friends without a Claude account ----------
+   Works on any network (plain secure WebSocket). Same shape as the room capability's named room:
+   every phone keeps one retained presence message per room, refreshed every few seconds;
+   a stale one (closed tab, lost signal) drops out after 35 s. */
+const MQ = {
+  ok: () => typeof window.mqtt !== 'undefined' && typeof window.mqtt.connect === 'function',
+  brokers: ['wss://broker.emqx.io:8084/mqtt', 'wss://broker.hivemq.com:8884/mqtt', 'wss://test.mosquitto.org:8081/mqtt'],
   join(name, host) {
     return new Promise((resolve, reject) => {
-      const id = 'monosy-' + name.replace(/^mono-/, '');
-      const listeners = [], connL = [], conns = [];
-      const self = {peer:null, presence:Object.freeze({})};
-      let retryT = 0, members = new Map(), connected = false, peer = null, hostConn = null, closed = false, done = false, nt = 0, bt = 0, tries = 0;
-      const finish = (ok, v) => { if (done) return; done = true; clearTimeout(timer); ok ? resolve(v) : reject(v); };
-      const timer = setTimeout(() => { if (!done) { try { peer && peer.destroy(); } catch {} finish(false, {code:'timeout'}); } }, 15000);
-      const snap = () => [...members.entries()].map(([pid, pr]) => Object.freeze({peer:pid, by:null, isMe:pid === self.peer, sameTab:pid === self.peer, kind:'viewer', guest:false, presence:pr, updatedAt:Date.now()}));
+      const room = name.replace(/^mono-/, ''), base = 'monosy/v1/' + room + '/p/', me = 'm' + rid(10), topic = base + me;
+      const listeners = [], connL = [], raw = new Map(), members = new Map();
+      let client = null, self = Object.freeze({}), connected = false, done = false, closed = false, nt = 0, pt = 0, lastPub = 0, hb = 0;
+      const finish = (ok, v) => { if (done) return; done = true; ok ? resolve(v) : reject(v); };
+      const fresh = t => Date.now() - t < 35000;
+      const snap = () => {
+        const out = [Object.freeze({peer:me, by:null, isMe:true, sameTab:true, kind:'viewer', guest:false, presence:self, updatedAt:Date.now()})];
+        members.forEach((m, id) => { if (fresh(m.t)) out.push(m.peer); });
+        return out;
+      };
       const notify = () => { if (nt) return; nt = setTimeout(() => { nt = 0; const ps = snap(); listeners.slice().forEach(fn => { try { fn({peers:ps, joined:[], left:[], updated:[]}); } catch {} }); }, 16); };
       const setConn = v => { if (connected === v) return; connected = v; connL.forEach(fn => { try { fn(v); } catch {} }); };
-      const roster = () => ({t:'r', m:[...members.entries()]});
-      const broadcast = () => { if (bt) return; bt = setTimeout(() => { bt = 0; const msg = roster(); conns.forEach(c => { if (c.open) { try { c.send(msg); } catch {} } }); }, 30); };
+      const pubNow = () => { pt = 0; lastPub = Date.now(); if (client && client.connected) client.publish(topic, JSON.stringify({t:Date.now(), p:self}), {qos:0, retain:true}); };
+      // at most ~8 publishes a second: the host updates its state on every animation step
+      const pub = () => { if (pt) return; pt = setTimeout(pubNow, Math.max(0, 120 - (Date.now() - lastPub))); };
       const api = {
         name,
-        presence: async patch => {
-          self.presence = Object.freeze(Object.assign({}, self.presence, JSON.parse(JSON.stringify(patch))));
-          if (self.peer) members.set(self.peer, self.presence);
-          notify();
-          if (host) broadcast(); else if (hostConn && hostConn.open) { try { hostConn.send({t:'p', p:self.presence}); } catch {} }
-        },
+        presence: async patch => { self = Object.freeze(Object.assign({}, self, JSON.parse(JSON.stringify(patch)))); notify(); pub(); },
         onPeers: fn => { listeners.push(fn); setTimeout(() => fn({peers:snap(), joined:[], left:[], updated:[]}), 0); return () => { const i = listeners.indexOf(fn); if (i >= 0) listeners.splice(i, 1); }; },
         onConnection: fn => { connL.push(fn); setTimeout(() => fn(connected), 0); return () => {}; },
         connected: () => connected, peers: snap, emit: async () => {}, on: () => () => {},
-        leave: async () => { closed = true; try { peer && peer.destroy(); } catch {} }
+        leave: async () => {
+          closed = true; clearInterval(hb); clearTimeout(pt);
+          try { client.publish(topic, '', {qos:0, retain:true}, () => client.end()); } catch { try { client.end(true); } catch {} }
+        }
       };
-      const cfg = {debug:0};
-      if (host) {
-        const open = () => {
-          peer = new Peer(id, cfg);
-          peer.on('open', pid => { self.peer = pid; members.set(pid, self.presence); setConn(true); notify(); finish(true, api); });
-          peer.on('connection', c => {
-            conns.push(c);
-            c.on('open', () => { try { c.send(roster()); } catch {} });
-            c.on('data', d => { if (d && d.t === 'p' && d.p && typeof d.p === 'object' && !Array.isArray(d.p)) { members.set(c.peer, Object.freeze(d.p)); notify(); broadcast(); } });
-            c.on('close', () => { members.delete(c.peer); const i = conns.indexOf(c); if (i >= 0) conns.splice(i, 1); notify(); broadcast(); });
-            c.on('error', () => {});
-          });
-          peer.on('disconnected', () => { if (!closed) { try { peer.reconnect(); } catch {} } });
-          peer.on('error', e => {
-            // after a reload the old room id can stay taken for a little while: keep trying
-            if (!done && e && e.type === 'unavailable-id' && tries++ < 6) { try { peer.destroy(); } catch {} setTimeout(open, 2500); return; }
-            if (!done) finish(false, e);
-          });
-        };
-        open();
-      } else {
-        peer = new Peer(undefined, cfg);
-        const retry = () => { if (retryT || closed) return; retryT = setTimeout(() => { retryT = 0; connect(); }, 2500); };
-        const connect = () => {
+      const tryBroker = idx => {
+        if (closed) return;
+        if (idx >= MQ.brokers.length) return finish(false, {code:'net'});
+        let opened = false;
+        const c = mqtt.connect(MQ.brokers[idx], {clientId:me, keepalive:20, clean:true, reconnectPeriod:2000, connectTimeout:6000, will:{topic, payload:'', qos:0, retain:true}});
+        const giveUp = setTimeout(() => { if (!opened) { try { c.end(true); } catch {} tryBroker(idx + 1); } }, 8000);
+        c.on('connect', () => {
           if (closed) return;
-          hostConn = peer.connect(id, {reliable:true});
-          hostConn.on('open', () => { setConn(true); try { hostConn.send({t:'p', p:self.presence}); } catch {} finish(true, api); });
-          hostConn.on('data', d => {
-            if (!d || d.t !== 'r' || !Array.isArray(d.m)) return;
-            const old = members, next = new Map();
-            d.m.forEach(([k, v]) => {
-              if (k === self.peer) return;
-              const prev = old.get(k);
-              next.set(k, prev && JSON.stringify(prev) === JSON.stringify(v) ? prev : Object.freeze(v));
-            });
-            if (self.peer) next.set(self.peer, self.presence);
-            members = next; notify();
+          setConn(true);
+          if (opened) { pubNow(); return; }
+          opened = true; clearTimeout(giveUp); client = c;
+          c.subscribe(base + '+', {qos:0}, err => {
+            if (err) { try { c.end(true); } catch {} return tryBroker(idx + 1); }
+            pubNow();
+            hb = setInterval(() => { pubNow(); notify(); }, 8000);
+            if (host) return finish(true, api);
+            // retained messages arrive right after subscribing: give them a moment, then check a host is really there
+            setTimeout(() => {
+              if (snap().some(x => !x.sameTab && x.presence && x.presence.role === 'host')) finish(true, api);
+              else { closed = true; clearInterval(hb); try { c.publish(topic, '', {qos:0, retain:true}, () => c.end()); } catch {} finish(false, {code:'no_room'}); }
+            }, 3500);
           });
-          hostConn.on('close', () => { setConn(false); members = new Map(self.peer ? [[self.peer, self.presence]] : []); notify(); retry(); });
-          hostConn.on('error', () => {});
-        };
-        peer.on('open', pid => { self.peer = pid; members.set(pid, self.presence); connect(); });
-        peer.on('disconnected', () => { if (!closed) { try { peer.reconnect(); } catch {} } });
-        peer.on('error', e => {
-          if (e && e.type === 'peer-unavailable') { if (!done) finish(false, {code:'no_room'}); else retry(); return; }
-          if (!done) finish(false, e);
         });
-      }
+        c.on('message', (tp, buf) => {
+          const id = tp.slice(base.length); if (id === me) return;
+          const s = typeof buf === 'string' ? buf : new TextDecoder().decode(buf);
+          if (!s) { raw.delete(id); members.delete(id); notify(); return; }
+          let o; try { o = JSON.parse(s); } catch { return; }
+          if (!o || typeof o.t !== 'number' || !o.p || typeof o.p !== 'object' || Array.isArray(o.p)) return;
+          const body = JSON.stringify(o.p), prev = members.get(id);
+          const peer = prev && raw.get(id) === body ? prev.peer : Object.freeze({peer:id, by:null, isMe:false, sameTab:false, kind:'viewer', guest:false, presence:Object.freeze(o.p), updatedAt:Date.now()});
+          raw.set(id, body); members.set(id, {t:o.t, peer});
+          notify();
+        });
+        c.on('close', () => { if (opened) setConn(false); });
+        c.on('offline', () => setConn(false));
+        c.on('error', () => {});
+      };
+      tryBroker(0);
     });
   }
 };
@@ -2384,11 +2379,11 @@ const NET = {
     this.cid = store.get('monopoly-sy-cid'); if (!this.cid) { this.cid = rid(12); store.set('monopoly-sy-cid', this.cid); }
     try { this.lobby = window.claude && window.claude.use ? await window.claude.use('room') : null; } catch { this.lobby = null; }
     // no Claude room here (a copy hosted on any website, or a viewer without an account): connect the phones directly
-    if (!this.lobby) { this.p2p = true; this.lobby = {join:(name, opts) => P2P.join(name, !!(opts && opts.host))}; }
+    if (!this.lobby) { this.p2p = true; this.lobby = {join:(name, opts) => MQ.join(name, !!(opts && opts.host))}; }
     try { this.user = window.claude && window.claude.use ? await window.claude.use('user') : null; } catch { this.user = null; }
     setInterval(() => this.tick(), 1500);
   },
-  available() { return !!this.lobby && (!this.p2p || P2P.ok()); },
+  available() { return !!this.lobby && (!this.p2p || MQ.ok()); },
   keyOf(pe) { return pe.by || (pe.presence && pe.presence.cid) || pe.peer; },
   myKey() { const me = this.peers.find(x => x.sameTab); return (me && me.by) || this.cid; },
   async open(code, host) {
@@ -2429,7 +2424,11 @@ const NET = {
     if (!this.room) return;
     this.room.presence({role:'player', cid:this.cid, sn:this.sn, name:(seats[0].name || '').slice(0, 14), tok:seats[0].tok, acts:this.acts.slice(-8), ans:this.ans}).catch(() => {});
   },
-  send(a) { this.acts.push(Object.assign({n:++this.actN}, a)); this.pushMine(); },
+  send(a) {
+    this.acts.push(Object.assign({n:++this.actN}, a)); this.pushMine();
+    // hold the buttons briefly so a double tap is not sent twice while the host answers
+    this.sentAt = Date.now(); if (S) renderPanel(); clearTimeout(this.holdT); this.holdT = setTimeout(() => { if (S) renderPanel(); }, 1600);
+  },
   answer(id, v) { this.ans = {id, v}; this.pushMine(); },
   // ----- host side -----
   isRemote(p) { return this.mode === 'host' && !!p.remote; },
@@ -2610,7 +2609,7 @@ if (V3) ['coins', 'burst', 'flash', 'shake', 'fireworks'].forEach(k => {
 });
 const aiCtl = p => !p.human || (NET.mode === 'client' ? !!p.away : (!!p.remote && (NET.mode !== 'host' || NET.isAway(p))));
 const isLocal = p => NET.mode === 'client' ? p.id === NET.mySeat : (p.human && !p.remote);
-const busyNow = () => NET.mode === 'client' ? !!S.bz : busy;
+const busyNow = () => NET.mode === 'client' ? (!!S.bz || Date.now() - (NET.sentAt || 0) < 1500) : busy;
 
 async function runPrompt(pr) {
   const p = S.players[NET.mySeat], q = pr.p || {}; let v;
@@ -2685,7 +2684,7 @@ function onlineScreen(view) {
     if (t.closest('#oJoin')) {
       if (!/^[a-z0-9]{5}$/.test(joinCode)) { err = ['اكتب كود الغرفة (5 أحرف).', 'Type the 5-character room code.']; draw(); return; }
       me.name = (me.name || '').trim() || L('لاعب', 'Player'); store.set('monopoly-sy-cfg', JSON.stringify({n:cnt, seats}));
-      try { await NET.joinCode(joinCode); view = 'wait'; } catch (x) { err = x && x.code === 'no_room' ? ['ما في غرفة بهالكود، أو المضيف سكّر اللعبة.', 'No room with that code, or the host closed the game.'] : ['ما قدرنا ندخل الغرفة. تأكد من الكود والإنترنت.', 'Could not join that room. Check the code and the internet.']; }
+      try { await NET.joinCode(joinCode); view = 'wait'; } catch (x) { err = x && x.code === 'no_room' ? ['ما في غرفة بهالكود، أو المضيف سكّر اللعبة. تأكد إنو صفحة المضيف مفتوحة.', 'No room with that code, or the host closed the game. Make sure the host has the game open.'] : x && x.code === 'net' ? ['ما قدرنا نوصل لخادم اللعب. جرّب شبكة تانية (واي فاي أو نت الموبايل).', 'Could not reach the game server. Try another network (Wi-Fi or mobile data).'] : ['ما قدرنا ندخل الغرفة. تأكد من الكود والإنترنت.', 'Could not join that room. Check the code and the internet.']; }
       draw(); return;
     }
     if (t.closest('#oCopy')) { const c = NET.code.toUpperCase(); try { await navigator.clipboard.writeText(c); toast('انتسخ الكود', 'Code copied'); } catch { toast(`الكود: ${c}`, `Code: ${c}`); } return; }
