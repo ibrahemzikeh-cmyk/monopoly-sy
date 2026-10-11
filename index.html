@@ -511,6 +511,36 @@ html,body{overflow:hidden}
   .stage{flex-direction:column;align-items:stretch;justify-content:flex-end;gap:0}
   .panel{flex:none;max-width:560px}
 }
+
+/* ---------- bright 2D board ---------- */
+.board{background:#2f7fe0;border:0;gap:.35cqw;padding:.45cqw;border-radius:2.4cqw;box-shadow:0 0 0 .8cqw #fff,0 0 0 1.5cqw #d9a443,0 18px 40px rgba(10,50,90,.35)}
+.tile{background:#fff;color:var(--g-ink);border-radius:.9cqw}
+.tile.here{box-shadow:inset 0 0 0 .6cqw var(--g-yellow),0 0 2cqw var(--g-yellow)}
+.b .bar,.t .bar{height:3.2cqw}
+.l .bar,.r .bar{width:3.2cqw}
+.bar{border:0!important}
+.tx .ar{font-size:1.9cqw;font-weight:800;color:var(--g-ink)}
+.tx .pr{color:var(--g-green-d);font-weight:800;font-size:1.55cqw}
+.tx .ico{font-size:2.9cqw}
+.cx .ar{color:var(--g-ink);font-weight:800}
+.cx .sub{color:var(--g-muted);font-weight:700}
+.c-go{background:#ffe3e6}
+.c-go .ar{color:var(--g-red-d)}
+.center{background:radial-gradient(circle at 50% 45%,#c9f6d8 0,#7fdca3 55%,#45c27a 100%);border-radius:1.6cqw}
+.center::before{display:none}
+.logo .lar{font-family:var(--g-disp);color:#e3262f;-webkit-text-stroke:.7cqw #fff;paint-order:stroke fill;text-shadow:0 .8cqw 0 #8a1620,0 1.4cqw 2cqw rgba(0,0,0,.2)}
+.logo .len{color:var(--g-ink);font-weight:800;letter-spacing:.3em}
+.turnline .ar{color:var(--g-ink);font-weight:800;background:#fff;padding:.6cqw 2cqw;border-radius:99px;box-shadow:0 .5cqw 0 rgba(0,0,0,.15)}
+.die{box-shadow:0 .8cqw 0 #c9b98f,0 1.4cqw 2.4cqw rgba(0,0,0,.25);border-radius:2.2cqw}
+.news{background:#fff;border:0;color:var(--g-ink);box-shadow:0 .6cqw 0 rgba(0,0,0,.15)}
+.news .ar{color:var(--g-ink);font-weight:700}
+.tk{border-color:#fff;box-shadow:0 .4cqw 0 rgba(0,0,0,.3)}
+.own{opacity:.95}
+.mort::after{background:repeating-linear-gradient(45deg,transparent 0 .8cqw,rgba(255,91,107,.28) .8cqw 1.6cqw)}
+/* end-turn countdown */
+.cd{display:inline-block;margin-inline-start:6px;font-family:var(--g-disp);font-size:.85em;background:rgba(0,0,0,.18);padding:0 8px;border-radius:99px;font-weight:400}
+.btn.urgent{--d:var(--g-red-d)!important;background:linear-gradient(180deg,#ff8794,var(--g-red))!important;animation:urg .6s ease-in-out infinite!important}
+@keyframes urg{50%{transform:scale(1.04)}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 
@@ -869,7 +899,7 @@ async function doRoll() {
   const p = cp();
   if (S.phase === 'roll' && p.jail) return jailRoll();
   if (!(S.phase === 'roll' || (S.phase === 'post' && S.canRoll))) return;
-  busy = true; S.canRoll = false; render();
+  busy = true; S.canRoll = false; S.postAt = 0; render();
   const [a, b] = await throwDice();
   const dbl = a === b;
   if (dbl) { SFX.play('doubles'); FX.bannerL('دوبل!', 'DOUBLES!'); }
@@ -904,7 +934,7 @@ function finishRoll() {
   busy = false;
   if (checkOver()) return;
   if (cp().bk) return endTurn();
-  S.phase = 'post'; save(); render();
+  S.phase = 'post'; S.postAt = Date.now(); save(); render();
 }
 function payJail() {
   const p = cp(); if (busy || !p.jail || p.cash < 50) return;
@@ -922,7 +952,7 @@ function useCard() {
 function endTurn() {
   if (busy) return;
   if (checkOver()) return;
-  S.dc = 0; S.canRoll = false;
+  S.dc = 0; S.canRoll = false; S.postAt = 0;
   let n = S.cur;
   do { n = (n + 1) % S.players.length; } while (S.players[n].bk);
   S.cur = n; S.phase = 'roll'; S.turn++;
@@ -1442,6 +1472,31 @@ function renderPlayers() {
   });
   if (!cashRaf && S.players.some(p => (cashShown[p.id] ?? p.cash) !== p.cash)) cashRaf = requestAnimationFrame(tickCash);
 }
+const AUTO_END = 60000;
+// ms left before the turn ends by itself, or -1 when no countdown is running
+function endLeft() {
+  if (!S || S.phase !== 'post' || S.canRoll) return -1;
+  if (S.__net ? S.bz : busy) return -1;
+  if (S.__net) return S.postDeadline ? Math.max(0, S.postDeadline - Date.now()) : -1;
+  if (!S.postAt || !cp().human) return -1;
+  return Math.max(0, AUTO_END - (Date.now() - S.postAt));
+}
+function paintCountdown() {
+  const left = endLeft();
+  document.querySelectorAll('#panel .cd').forEach(el => { el.textContent = left >= 0 ? '0:' + String(Math.ceil(left / 1000)).padStart(2, '0') : ''; });
+  const btn = $('#panel [data-a=end]'); if (btn) btn.classList.toggle('urgent', left >= 0 && left < 10000);
+  return left;
+}
+function autoEndTick() {
+  if (!S) return;
+  const left = paintCountdown();
+  if (NET.mode === 'client' || S.__net || busy || left !== 0) return;
+  const p = cp();
+  if (isLocal(p) && !$('#modal').hidden) return;
+  say(`⏱ خلص الوقت، انتهى دور ${pn(p)} لحاله`, `⏱ Time's up, ${pn(p)}'s turn ended automatically`);
+  endTurn();
+}
+setInterval(autoEndTick, 500);
 function netBar() {
   if (NET.mode === 'off') return '';
   const n = NET.peers.length || 1, me = NET.mode === 'client' ? S.players[NET.mySeat] : S.players[0];
@@ -1454,13 +1509,13 @@ function renderPanel() {
   const p = cp(), busy = busyNow(); let acts;
   if (S.phase === 'over') acts = pbtn('new', NET.mode === 'client' ? 'اطلع من الغرفة' : 'لعبة جديدة', NET.mode === 'client' ? 'Leave room' : 'New game', 'pri big');
   else if (aiCtl(p)) acts = `<div class="aiwait">${p.human ? bi(`📡 ${pn(p)} مو متصل، الكمبيوتر عم يلعب عنه…`, `📡 ${pn(p)} is offline, the computer plays for them…`) : bi('🤖 الكمبيوتر يلعب…', 'Computer is playing…')}</div>`;
-  else if (!isLocal(p)) acts = `<div class="aiwait">${bi(`⏳ دور ${pn(p)}… عم يلعب من موبايله`, `⏳ ${pn(p)}'s turn… playing on their phone`)}</div>`;
+  else if (!isLocal(p)) acts = `<div class="aiwait">${bi(`⏳ دور ${pn(p)}… عم يلعب من موبايله <span class="cd"></span>`, `⏳ ${pn(p)}'s turn… playing on their phone <span class="cd"></span>`)}</div>`;
   else if (S.phase === 'roll' && p.jail) acts =
     pbtn('jroll', 'ارمِ للدوبل', `Roll for doubles (${p.jt + 1}/3)`, 'pri', busy) +
     pbtn('jpay', 'ادفع $50 واخرج', 'Pay $50 fine', '', busy || p.cash < 50) +
     (p.goojf.length ? pbtn('jcard', 'استخدم بطاقة الخروج', 'Use jail-free card', '', busy) : '');
   else if (S.phase === 'roll') acts = pbtn('roll', '🎲 ارمِ النرد', 'Roll the dice', 'pri big', busy);
-  else acts = S.canRoll ? pbtn('roll', '🎲 دوبل! ارمِ مرة أخرى', 'Doubles! Roll again', 'pri big', busy) : pbtn('end', 'أنهِ الدور', 'End turn', 'pri big', busy);
+  else acts = S.canRoll ? pbtn('roll', '🎲 دوبل! ارمِ مرة أخرى', 'Doubles! Roll again', 'pri big', busy) : pbtn('end', 'أنهِ الدور <span class="cd"></span>', 'End turn <span class="cd"></span>', 'pri big', busy);
   const can = isLocal(p) && !busy && (S.phase === 'roll' || S.phase === 'post');
   const status = p.bk ? L('مفلس', 'Bankrupt') : p.jail ? L('في السجن', 'In jail') : L(B[p.pos].ar, B[p.pos].en);
   $('#panel').innerHTML = `
@@ -1478,7 +1533,7 @@ function render() {
   if (!S) return;
   renderPlayers();
   if (V3 && V3.on()) V3.sync(); else renderBoard();
-  renderPanel();
+  renderPanel(); paintCountdown();
   if (NET.mode === 'host') NET.push();
   maybeAI();
 }
@@ -1494,7 +1549,8 @@ const V3 = (() => {
   let R, scene, cam, board, tex, cv, ctx, wrapEl, sun, sea, beam, glowDisk, ok = false, active = false, texSig = '', houseSig = '', houses = null, ring, curId = null, diceAnim = null, fitR = 19;
   const pawns = {}, dice = [];
   const view = {az:0, pol:0.62, rad:19, tgt:new T.Vector3(0, 0, 0.35)};
-  let camAuto = store.get('monopoly-sy-cam') !== 'free', userHold = 0, diceUntil = 0;
+  const CAMS = ['calm', 'cine', 'free'];
+  let camMode = CAMS.includes(store.get('monopoly-sy-cam2')) ? store.get('monopoly-sy-cam2') : 'calm', userHold = 0, diceUntil = 0;
   const colB = c => c === 1 ? [0, 1.6] : c === 11 ? [10.6, 12.2] : [1.6 + (c - 2), 1.6 + (c - 1)];
   const colC = c => { const b = colB(c); return (b[0] + b[1]) / 2; };
   const INNER = {b:[0, -1], l:[1, 0], t:[0, 1], r:[-1, 0]};
@@ -1948,7 +2004,7 @@ const V3 = (() => {
     const r = new T.Mesh(new T.RingGeometry(.3, .42, 48), new T.MeshBasicMaterial({color:new T.Color(color), transparent:true, opacity:.9, blending:T.AdditiveBlending, depthWrite:false, side:T.DoubleSide}));
     r.rotation.x = -Math.PI / 2; r.position.set(c.x, .02, c.z); scene.add(r); waves.push({m:r, t0:performance.now()});
   }
-  function shake(ms) { shakeUntil = performance.now() + ms; }
+  function shake(ms) { shakeUntil = performance.now() + (camMode === 'calm' ? ms * .35 : ms); }
   function fireworks() {
     if (!ok || !active || reduce) return;
     const cols = ['#f2cd72', '#c43a4f', '#37a873', '#3a7bd5', '#ffffff', '#9b59b6'];
@@ -2130,9 +2186,15 @@ const V3 = (() => {
     const held = now < userHold;
     const diceFocus = !!diceAnim || now < diceUntil;
     const moving = cpw && (cpw.to || now < (cpw.hopEnd || 0) + 900);
-    let want, wr = null, wp = null, wa = null;
-    if (diceFocus && !moving) { want = new T.Vector3(0, 0, 1); if (camAuto && !held) { wr = fitR * .6; wp = .7; } }
-    else if (camAuto && !held) {
+    let want, wr = null, wp = null, wa = null, calm = camMode === 'calm';
+    if (calm) {
+      // steady overview; it only leans a little toward the moving piece
+      const lean = cpw && moving ? .18 : 0;
+      want = new T.Vector3(cpw ? cpw.cur.x * lean : 0, 0, .35 + (cpw ? (cpw.cur.z - .35) * lean : 0));
+      if (!held) { wr = fitR; wp = idlePol(); wa = 0; }
+    }
+    else if (diceFocus && !moving) { want = new T.Vector3(0, 0, 1); if (camMode === 'cine' && !held) { wr = fitR * .6; wp = .7; } }
+    else if (camMode === 'cine' && !held) {
       if (moving) { want = cpw.cur.clone().setY(0).multiplyScalar(.72); wr = fitR * .6; wp = .8; wa = SIDEAZ[gridPos(S.players[curId].pos)[2]]; }
       else { want = new T.Vector3(0, 0, .35); wr = fitR; wp = idlePol(); wa = 0; }
     } else {
@@ -2140,10 +2202,11 @@ const V3 = (() => {
       want = cpw ? new T.Vector3(cpw.cur.x * zk, 0, .35 + (cpw.cur.z - .35) * zk) : new T.Vector3(0, 0, .35);
     }
     const k = sp => 1 - Math.exp(-camDt * sp);
-    view.tgt.lerp(want, k(diceFocus ? 5 : 3.6));
-    if (wr !== null) view.rad += (wr - view.rad) * k(2.6);
-    if (wp !== null) view.pol += (wp - view.pol) * k(2.6);
-    if (wa !== null) view.az = angLerp(view.az, wa, k(2));
+    const sp = calm ? .55 : 1;
+    view.tgt.lerp(want, k((diceFocus && !calm ? 5 : 3.6) * sp));
+    if (wr !== null) view.rad += (wr - view.rad) * k(2.6 * sp);
+    if (wp !== null) view.pol += (wp - view.pol) * k(2.6 * sp);
+    if (wa !== null) view.az = angLerp(view.az, wa, k(2 * sp));
   }
 
   /* --- loop --- */
@@ -2290,8 +2353,8 @@ const V3 = (() => {
     init, sync, roll, resetView, burst, flash, shake, fireworks, cardFly,
     coins: coinFly,
     on: () => ok && active,
-    get camAuto() { return camAuto; },
-    toggleCam() { camAuto = !camAuto; store.set('monopoly-sy-cam', camAuto ? 'auto' : 'free'); userHold = 0; return camAuto; },
+    get camMode() { return camMode; },
+    toggleCam() { camMode = CAMS[(CAMS.indexOf(camMode) + 1) % CAMS.length]; store.set('monopoly-sy-cam2', camMode); userHold = 0; return camMode; },
     get hq() { return HQ; },
     setHQ(v) { HQ = !!v; store.set('monopoly-sy-hq', HQ ? 'high' : 'low'); if (!ok) return; applyQuality(); makeBoardTexture(); texSig = ''; sync(); },
     setActive(v) { active = !!v && ok; if (active) { resize(); sync(); } }
@@ -2817,7 +2880,7 @@ const NET = {
       gid:s.gid, c:s.cur, ph:s.phase, cr:s.canRoll ? 1 : 0, d:s.dice, t:s.turn, bh:s.bankH, bt:s.bankT, bz:busy ? 1 : 0,
       pl:s.players.map(p => [p.name, p.tok, p.col, p.human ? 1 : 0, p.cash, p.pos, p.jail ? 1 : 0, p.jt, p.goojf.map(t => t === 'chance' ? 'c' : 'h').join(''), p.bk ? 1 : 0, p.remote ? 1 : 0, this.isAway(p) ? 1 : 0]),
       pp:OWNIDX.map(i => { const x = s.props[i]; return (x.o === null ? '-' : x.o) + '' + x.h + (x.m ? '1' : '0'); }).join(''),
-      m:s.msg ? [s.msg.ar.slice(0, 300), s.msg.en.slice(0, 300)] : null, ln:s.logN || 0,
+      m:s.msg ? [s.msg.ar.slice(0, 300), s.msg.en.slice(0, 300)] : null, ln:s.logN || 0, pe:endLeft(),
       lg:s.log.slice(0, 3).map(l => [l.ar.slice(0, 260), l.en.slice(0, 260)]),
       st:s.net ? s.net.seats : []
     };
@@ -2907,6 +2970,7 @@ const NET = {
       this.logN = 0; this.prevPhase = null; this.seenFx = (h.fx || []).reduce((m, f) => Math.max(m, f.i), 0);
       $('#setup').hidden = true; $('#modal').hidden = true; $('#modal').innerHTML = '';
     }
+    S.postDeadline = g.pe >= 0 ? Date.now() + g.pe : 0;
     Object.assign(S, {cur:g.c, phase:g.ph, canRoll:!!g.cr, dice:g.d, turn:g.t, bankH:g.bh, bankT:g.bt, bz:g.bz, msg:g.m ? {ar:g.m[0], en:g.m[1]} : null, net:{code:this.code, seats:g.st}});
     g.pl.forEach((a, k) => {
       const p = S.players[k] || (S.players[k] = {id:k});
@@ -3079,8 +3143,12 @@ $('#bMusic').onclick = () => { const m = SFX.toggleMusic(); applyLang(); toast(m
 document.addEventListener('pointerdown', e => { if (e.target.closest('.btn,.ibtn,.pchip,.pt,.tp,.seg button,.tokb')) SFX.play('click'); }, true);
 $('#bView').onclick = () => { view3d = !view3d; store.set('monopoly-sy-view', view3d ? '3d' : '2d'); applyView(); };
 $('#bReset').onclick = () => V3 && V3.resetView();
-const camBtn = () => { if (V3) $('#bCam').classList.toggle('on', V3.camAuto); };
-$('#bCam').onclick = () => { if (!V3) return; const a = V3.toggleCam(); camBtn(); toast(a ? 'الكاميرا: تلقائية تلحق الحركة' : 'الكاميرا: حرة', a ? 'Camera: auto, follows the action' : 'Camera: free'); };
+const camBtn = () => { if (V3) { $('#bCam').classList.toggle('on', V3.camMode !== 'free'); $('#bCam').textContent = {calm:'🎥', cine:'🎬', free:'✋'}[V3.camMode]; } };
+$('#bCam').onclick = () => {
+  if (!V3) return; const m = V3.toggleCam(); camBtn();
+  const t = {calm:['الكاميرا: هادية، ثابتة فوق اللوح', 'Camera: calm, steady over the board'], cine:['الكاميرا: سينمائية، بتلحق الحجر وبتلف', 'Camera: cinematic, follows and orbits the piece'], free:['الكاميرا: حرة، إنت بتحركها', 'Camera: free, you move it']}[m];
+  toast(t[0], t[1]);
+};
 camBtn();
 
 /* ---------- boot ---------- */
@@ -3093,6 +3161,7 @@ function start(data) {
   if (saved && saved.v === 1 && Array.isArray(saved.players)) {
     S = saved; busy = false; resumed = true;
     if (S.phase !== 'roll' && S.phase !== 'post' && S.phase !== 'over') S.phase = 'post';
+    if (S.phase === 'post') S.postAt = Date.now();
     lastStable = JSON.stringify(S);
   } else S = newState(cfgNow());
   applyLang(); applyView();
