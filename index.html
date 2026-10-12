@@ -2046,12 +2046,19 @@ const V3 = (() => {
   function loadChars() {
     if (!T.GLTFLoader || !T.SkeletonUtils) return;
     const ld = new T.GLTFLoader();
-    for (const k in CHAR) ld.load(CHAR[k].url, g => {
-      gltfs[k] = g;
-      for (const key in avCache) if (key.startsWith(k)) delete avCache[key];
-      for (const id in pawns) if (pawns[id].tok === k) { scene.remove(pawns[id].g); delete pawns[id]; }
-      sync(); if (typeof render === 'function') render();
-    }, undefined, () => {});
+    for (const k in CHAR) {
+      const done = g => {
+        gltfs[k] = g;
+        for (const key in avCache) if (key.startsWith(k)) delete avCache[key];
+        for (const id in pawns) if (pawns[id].tok === k) { scene.remove(pawns[id].g); delete pawns[id]; }
+        sync(); if (typeof render === 'function') render();
+      };
+      // hosts that cannot serve .glb get the same model as base64 text next to it
+      const fallback = () => fetch(CHAR[k].url + '.txt').then(r => r.ok ? r.text() : Promise.reject())
+        .then(t => { const bin = atob(t.trim()), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); ld.parse(u8.buffer, '', done, () => {}); })
+        .catch(() => {});
+      ld.load(CHAR[k].url, done, undefined, fallback);
+    }
   }
   // a fresh copy of a character, scaled to piece size and turned to face +x like every other piece
   function charModel(tok, col) {
