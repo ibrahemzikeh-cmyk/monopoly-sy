@@ -504,7 +504,7 @@ html,body{overflow:hidden}
 .acts .btn:not(.big) .ar{font-size:14px}
 .acts .btn.big{min-height:76px}
 .acts .aiwait{min-height:76px;padding:6px 10px;text-align:center}
-.dres{bottom:auto;top:66%}
+.dres{bottom:auto;top:73%}
 .boardwrap:not(.m3d) .dres{display:none}
 .turnpop{top:27%}
 .banner{top:43%}
@@ -560,7 +560,9 @@ html,body{overflow:hidden}
 @keyframes tagin{from{opacity:0;transform:scale(.4) translateY(14px)}}
 @keyframes tagout{to{opacity:0}}
 .landcard{position:absolute;left:50%;top:24%;transform:translateX(-50%);z-index:6;pointer-events:none}
-.nametag{position:absolute;left:0;top:0;background:var(--pc);color:#fff;font-weight:800;font-size:12.5px;padding:2px 10px;border-radius:99px;border:2px solid #fff;box-shadow:0 3px 0 rgba(0,0,0,.22);white-space:nowrap;text-shadow:0 1px 0 rgba(0,0,0,.3);will-change:transform}
+.tileplate{position:absolute;left:0;top:0;display:flex;align-items:center;gap:5px;background:rgba(255,255,255,.95);color:var(--g-ink);font-weight:800;font-size:12px;line-height:1;padding:4px 9px 4px 7px;border-radius:99px;box-shadow:0 0 0 2px var(--tc),0 3px 0 var(--tc),0 6px 12px rgba(0,0,0,.2);white-space:nowrap;will-change:transform;z-index:1}
+.tileplate i{width:9px;height:9px;border-radius:50%;background:var(--tc);flex:none}
+.nametag{z-index:2;position:absolute;left:0;top:0;background:var(--pc);color:#fff;font-weight:800;font-size:12.5px;padding:2px 10px;border-radius:99px;border:2px solid #fff;box-shadow:0 3px 0 rgba(0,0,0,.22);white-space:nowrap;text-shadow:0 1px 0 rgba(0,0,0,.3);will-change:transform}
 /* ---------- 2D board with depth and stronger colour ---------- */
 .board{background:linear-gradient(135deg,#3a8dff,#1f5fcf)}
 .tile{box-shadow:inset 0 -.55cqw 0 rgba(22,48,74,.14),inset 0 .25cqw 0 #fff}
@@ -2013,7 +2015,33 @@ const V3 = (() => {
     landTags.forEach(t => { if (t.pid === pid) t.el.remove(); });
     landTags.push({el, pid, i, t0:performance.now()});
   }
+  // a small name plate on the outer edge of every square someone stands on, so the piece never hides where it is
+  const plates = {};
+  function plateStep() {
+    const occ = {};
+    if (S) S.players.forEach(p => { if (!p.bk) occ[p.pos] = true; });
+    for (const i in plates) if (!occ[i]) { plates[i].remove(); delete plates[i]; }
+    const cw = R.domElement.clientWidth, chh = R.domElement.clientHeight;
+    for (const k in occ) {
+      const i = +k;
+      let el = plates[i];
+      if (!el) { el = plates[i] = document.createElement('div'); el.className = 'tileplate'; tagLayer().appendChild(el); }
+      const key = LANG + i;
+      if (el.dataset.k !== key) { el.dataset.k = key; el.style.setProperty('--tc', landColor(i)); el.innerHTML = `<i></i>${L(B[i].ar, B[i].en)}`; }
+      el.hidden = landTags.some(t => t.i === i);
+      if (el.hidden) continue;
+      const c = center(i);
+      let ox, oz;
+      if (i % 10 === 0) { const d = Math.hypot(c.x, c.z) || 1; ox = c.x / d; oz = c.z / d; }
+      else { const inn = INNER[gridPos(i)[2]]; ox = -inn[0]; oz = -inn[1]; }
+      const sc = toScreen(new T.Vector3(c.x + ox * .9, .05, c.z + oz * .9));
+      const w = el.offsetWidth || 80;
+      const x = Math.max(w / 2 + 6, Math.min(cw - w / 2 - 6, sc.x)), y = Math.max(6, Math.min(chh - 30, sc.y));
+      el.style.transform = `translate(${x}px,${y}px) translate(-50%,-50%)`;
+    }
+  }
   function tagStep(now) {
+    if (ok && S) plateStep();
     if (!tagsEl && !landTags.length) return;
     for (let k = landTags.length - 1; k >= 0; k--) {
       const t = landTags[k], age = now - t.t0, pw = pawns[t.pid];
