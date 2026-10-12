@@ -578,6 +578,39 @@ html,body{overflow:hidden}
 .center{background:radial-gradient(circle at 50% 42%,#c4f7d3 0,#5fd08a 58%,#2aa95e 100%);box-shadow:inset 0 0 0 .5cqw rgba(255,255,255,.55)}
 .tk{width:4.6cqw;height:4.6cqw;font-size:2.7cqw;border-width:.45cqw}
 .tile.here{box-shadow:inset 0 0 0 .7cqw var(--g-yellow),0 0 2.4cqw var(--g-yellow);z-index:2}
+
+/* ---------- 2D: every square tinted by what it is ---------- */
+.board{background:linear-gradient(135deg,#2b6fe0,#163f9e)}
+.tile{color:#0f2238}
+.tile.ty-prop{background:linear-gradient(to var(--tint-dir,bottom),color-mix(in srgb,var(--gc) 34%,#fff) 0%,color-mix(in srgb,var(--gc) 12%,#fff) 100%)}
+.tile.ty-prop.t{--tint-dir:top}.tile.ty-prop.l{--tint-dir:left}.tile.ty-prop.r{--tint-dir:right}
+.tile.ty-chance{background:linear-gradient(135deg,#ffe28a,#ffb547)}
+.tile.ty-chest{background:linear-gradient(135deg,#bfe3ff,#6fb6ff)}
+.tile.ty-tax{background:linear-gradient(135deg,#e7d6ff,#b996ff)}
+.tile.ty-rr{background:linear-gradient(135deg,#e2e8f0,#b7c4d6)}
+.tile.ty-util{background:linear-gradient(135deg,#fff3b3,#ffd95a)}
+.tile.ty-go{background:linear-gradient(135deg,#ffb3bc,#ff5b6b)}
+.tile.ty-go .ar,.tile.ty-go .sub{color:#fff!important;text-shadow:0 .2cqw 0 rgba(0,0,0,.25)}
+.tile.ty-jail{background:linear-gradient(135deg,#ffd9a8,#ff9f43)}
+.tile.ty-free{background:linear-gradient(135deg,#c7ecff,#45b4ff)}
+.tile.ty-gojail{background:linear-gradient(135deg,#e2ccff,#9b6bff)}
+.tile.ty-free .ar,.tile.ty-gojail .ar,.tile.ty-jail .ar{color:#0f2238}
+.tx .ar{color:#0f2238;font-weight:800;text-shadow:0 .15cqw 0 rgba(255,255,255,.6)}
+.tx .pr{background:#fff;color:#137a34;box-shadow:0 .2cqw 0 rgba(0,0,0,.15)}
+.tile{box-shadow:inset 0 -.6cqw 0 rgba(0,0,0,.16),inset 0 .3cqw 0 rgba(255,255,255,.7)}
+.center{background:radial-gradient(circle at 50% 42%,#a7f3c0 0,#36c46f 60%,#1e9a52 100%)}
+.logo .len,.turnline .ar{color:#0f2238}
+/* ---------- wide screens: players on the left, controls on the right, the board gets the full height ---------- */
+@media (min-width:900px) and (min-aspect-ratio:5/4){
+  #app>.players{position:fixed;left:16px;top:calc(env(safe-area-inset-top,0px) + 70px);width:230px;grid-template-columns:1fr!important;gap:10px;margin:0}
+  .stage>.panel{position:fixed!important;right:16px;bottom:16px;width:380px;max-width:380px;margin:0}
+  #app>.top{max-width:none}
+  .b3dui{top:auto;bottom:24px;left:16px;flex-direction:row}
+  .board{width:min(calc(100vw - 680px),calc(100dvh - 120px),900px)}
+  .dres{top:auto;bottom:24px;right:auto;left:50%;transform:translateX(-50%)}
+  .dres.show{animation:dresw .55s cubic-bezier(.2,1.6,.4,1)}
+  @keyframes dresw{from{transform:translateX(-50%) scale(.3);opacity:0}}
+}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 
@@ -1468,7 +1501,7 @@ const die = (n, dbl) => `<div class="die ${dbl ? 'rose' : ''}">${[1,2,3,4,5,6,7,
 function renderDice() { const d = $('#dice'); if (d) d.innerHTML = die(S.dice[0]) + die(S.dice[1]); }
 function tileHTML(s) {
   const [r, c, side] = gridPos(s.i), st = S.props[s.i];
-  let cls = `tile ${side}`, inner;
+  let cls = `tile ${side} ty-${s.t}`, inner;
   if (s.i % 10 === 0) {
     cls += ' corner';
     const cn = {
@@ -1494,7 +1527,7 @@ function tileHTML(s) {
   if (cur && cur.pos === s.i) cls += ' here';
   const toks = S.players.filter(p => !p.bk && p.pos === s.i).map(p =>
     `<span class="tk ${p === cur ? 'cur' : ''} ${p.jail ? 'jl' : ''}" style="--pc:${p.col}">${p.tok}</span>`).join('');
-  return `<div class="${cls}" data-i="${s.i}" tabindex="0" role="button" aria-label="${esc(s.en)}" style="grid-row:${r};grid-column:${c}">${inner}<div class="toks">${toks}</div></div>`;
+  return `<div class="${cls}" data-i="${s.i}" tabindex="0" role="button" aria-label="${esc(s.en)}" style="grid-row:${r};grid-column:${c};${s.t === 'prop' ? '--gc:' + GRP[s.g].c : ''}">${inner}<div class="toks">${toks}</div></div>`;
 }
 function renderBoard() {
   const p = cp();
@@ -2282,11 +2315,11 @@ const V3 = (() => {
     R.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix();
     const hf = 2 * Math.atan(Math.tan(cam.fov * Math.PI / 360) * cam.aspect);
     const nf = Math.min(hf, cam.fov * Math.PI / 180);
-    const old = fitR; fitR = (cam.aspect < .8 ? 6.35 : 7.1) / Math.tan(nf / 2);
+    const old = fitR; fitR = (cam.aspect < .8 ? 6.35 : cam.aspect > 1.25 ? 6.6 : 7.1) / Math.tan(nf / 2);
     if (Math.abs(view.rad - old) < .01) view.rad = fitR;
     if (ps) ps.mat.uniforms.h.value = R.domElement.height / (2 * Math.tan(cam.fov * Math.PI / 360));
   }
-  const idlePol = () => cam && cam.aspect < .8 ? .5 : .62;
+  const idlePol = () => cam && cam.aspect < .8 ? .5 : cam && cam.aspect > 1.25 ? .46 : .62;
   function resetView() { userHold = 0; view.az = 0; view.pol = idlePol(); view.rad = fitR; view.tgt.set(0, 0, .35); }
   function bindInput(el) {
     const pts = new Map(); let downT = 0, moved = 0, pinch0 = 0, rad0 = 0;
@@ -2511,111 +2544,137 @@ function applyView() {
   render();
 }
 
-/* ---------- sound (synthesised, no files): effects with a little room reverb, plus a looping tune ---------- */
+/* ---------- sound (synthesised, no files): bouncy board-game effects and a swing-pop loop ---------- */
 const SFX = (() => {
-  let ac = null, master = null, musicBus = null, on = store.get('monopoly-sy-sound') !== 'off', musicOn = store.get('monopoly-sy-music') !== 'off';
+  let ac = null, master = null, musicBus = null, comp = null, on = store.get('monopoly-sy-sound') !== 'off', musicOn = store.get('monopoly-sy-music') !== 'off';
   let stepN = 0, lastStep = 0, musT = 0, musNext = 0, musStep = 0;
   function ctx() {
     if (!ac) {
       try {
         ac = new (window.AudioContext || window.webkitAudioContext)();
-        master = ac.createGain(); master.gain.value = .6; master.connect(ac.destination);
-        const conv = ac.createConvolver(), len = Math.floor(ac.sampleRate * 1.7), ir = ac.createBuffer(2, len, ac.sampleRate);
-        for (let ch = 0; ch < 2; ch++) { const d = ir.getChannelData(ch); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3.2); }
-        conv.buffer = ir; const wet = ac.createGain(); wet.gain.value = .2; master.connect(conv); conv.connect(wet); wet.connect(ac.destination);
-        musicBus = ac.createGain(); musicBus.gain.value = .13; musicBus.connect(master);
+        comp = ac.createDynamicsCompressor(); comp.threshold.value = -14; comp.ratio.value = 3; comp.connect(ac.destination);
+        master = ac.createGain(); master.gain.value = .7; master.connect(comp);
+        const conv = ac.createConvolver(), len = Math.floor(ac.sampleRate * 1.4), ir = ac.createBuffer(2, len, ac.sampleRate);
+        for (let ch = 0; ch < 2; ch++) { const d = ir.getChannelData(ch); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3.5); }
+        conv.buffer = ir; const wet = ac.createGain(); wet.gain.value = .16; master.connect(conv); conv.connect(wet); wet.connect(comp);
+        musicBus = ac.createGain(); musicBus.gain.value = .12; musicBus.connect(master);
       } catch { ac = null; return null; }
     }
     if (ac.state === 'suspended') ac.resume().catch(() => {});
     return ac;
   }
+  const out = o => (o && o.bus) || master;
   function tone(f, t0, dur, o = {}) {
-    const a = ac, osc = a.createOscillator(), g = a.createGain(), vol = o.vol ?? .2;
+    const osc = ac.createOscillator(), g = ac.createGain(), vol = o.vol ?? .2;
     osc.type = o.type || 'sine'; osc.frequency.setValueAtTime(f, t0);
-    if (o.f2) osc.frequency.exponentialRampToValueAtTime(o.f2, t0 + dur);
-    g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(vol, t0 + (o.attack || .006)); g.gain.exponentialRampToValueAtTime(.0001, t0 + dur);
-    osc.connect(g); g.connect(o.bus || master); osc.start(t0); osc.stop(t0 + dur + .03);
+    if (o.f2) osc.frequency.exponentialRampToValueAtTime(o.f2, t0 + (o.glide || dur));
+    g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(vol, t0 + (o.attack || .005)); g.gain.exponentialRampToValueAtTime(.0001, t0 + dur);
+    osc.connect(g); g.connect(out(o)); osc.start(t0); osc.stop(t0 + dur + .03);
   }
   function noise(t0, dur, o = {}) {
-    const a = ac, len = Math.max(1, Math.floor(a.sampleRate * dur)), buf = a.createBuffer(1, len, a.sampleRate), d = buf.getChannelData(0);
+    const len = Math.max(1, Math.floor(ac.sampleRate * dur)), buf = ac.createBuffer(1, len, ac.sampleRate), d = buf.getChannelData(0);
     for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, o.curve || 2);
-    const s = a.createBufferSource(), fl = a.createBiquadFilter(), g = a.createGain();
+    const s = ac.createBufferSource(), fl = ac.createBiquadFilter(), g = ac.createGain();
     s.buffer = buf; fl.type = o.type || 'bandpass'; fl.frequency.setValueAtTime(o.freq || 2000, t0); fl.Q.value = o.q || 1; g.gain.value = o.vol ?? .3;
     if (o.f2) fl.frequency.exponentialRampToValueAtTime(o.f2, t0 + dur);
-    s.connect(fl); fl.connect(g); g.connect(o.bus || master); s.start(t0);
+    s.connect(fl); fl.connect(g); g.connect(out(o)); s.start(t0);
   }
-  const bell = (f, t, vol = .08, dur = .9) => { tone(f, t, dur, {vol}); tone(f * 2.76, t, dur * .5, {vol:vol * .35}); tone(f * 5.4, t, dur * .25, {vol:vol * .15}); };
-  const PENT = [523, 587, 659, 784, 880, 1047, 1175, 1319, 1568, 1760, 2093, 2349];
+  // marimba: a woody sine with a quick overtone and a soft mallet tick
+  function marimba(f, t, dur = .45, vol = .14, bus) {
+    tone(f, t, dur, {vol, bus}); tone(f * 4, t, dur * .18, {vol:vol * .3, bus}); tone(f * 10, t, .03, {vol:vol * .12, bus});
+  }
+  // brass: three slightly detuned saws through a filter that opens and closes like a horn stab
+  function brass(f, t, dur = .25, vol = .08, bus) {
+    const fl = ac.createBiquadFilter(), g = ac.createGain();
+    fl.type = 'lowpass'; fl.Q.value = 2; fl.frequency.setValueAtTime(500, t); fl.frequency.linearRampToValueAtTime(3200, t + .04); fl.frequency.exponentialRampToValueAtTime(900, t + dur);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + .02); g.gain.setValueAtTime(vol * .8, t + dur * .7); g.gain.exponentialRampToValueAtTime(.0001, t + dur + .08);
+    fl.connect(g); g.connect(bus || master);
+    [-7, 0, 6].forEach(c => { const o = ac.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(f, t); o.detune.value = c; o.connect(fl); o.start(t); o.stop(t + dur + .12); });
+  }
+  const bell = (f, t, vol = .06, dur = .6) => { tone(f, t, dur, {vol}); tone(f * 2.76, t, dur * .45, {vol:vol * .35}); };
+  const coins = (t, n = 7, vol = .045) => { for (let k = 0; k < n; k++) bell(2100 + k * 180 + Math.random() * 150, t + k * .045, vol, .35); };
+  const mf = m => 440 * Math.pow(2, (m - 69) / 12);
+  const STEPS = [72, 74, 76, 79, 81, 84, 86, 88, 91, 93, 96, 98];
   const P = {
-    click: t => tone(760, t, .07, {type:'sine', vol:.08, f2:380}),
+    click: t => tone(620, t, .08, {vol:.09, f2:980, glide:.04}),
     dice: t => {
-      for (let k = 0; k < 10; k++) { const d = k * .055 + Math.pow(k / 10, 1.6) * .25 + Math.random() * .02; noise(t + d, .035, {vol:.42 - k * .03, freq:1400 + Math.random() * 2600, q:6}); }
-      tone(160, t + .02, .1, {vol:.18, f2:90});
+      for (let k = 0; k < 9; k++) noise(t + k * .045 + Math.random() * .015, .03, {vol:.28, freq:2400 + Math.random() * 2000, q:7});
+      for (let k = 0; k < 5; k++) { const d = .45 + k * .08 + k * k * .02; noise(t + d, .04, {vol:.4 - k * .06, freq:1300 + Math.random() * 900, q:5}); }
+      tone(150, t + .45, .12, {vol:.16, f2:80});
     },
-    dicehit: t => { noise(t, .06, {vol:.5, freq:900, q:3}); tone(130, t, .14, {vol:.25, f2:70}); noise(t + .12, .04, {vol:.25, freq:1500, q:4}); noise(t + .2, .03, {vol:.15, freq:1800, q:4}); },
+    dicehit: t => { noise(t, .05, {vol:.45, freq:1100, q:4}); tone(140, t, .12, {vol:.2, f2:75}); marimba(mf(84), t + .05, .3, .07); },
     step: t => {
       if (ac.currentTime - lastStep > .7) stepN = 0;
       lastStep = ac.currentTime;
-      const f = PENT[Math.min(stepN++, PENT.length - 1)];
-      tone(f, t, .14, {type:'triangle', vol:.09}); tone(f * 2, t, .08, {vol:.03});
-      noise(t, .03, {vol:.08, freq:600, q:2, type:'lowpass'});
+      const f = mf(STEPS[Math.min(stepN++, STEPS.length - 1)]);
+      marimba(f, t, .3, .11); tone(f * .5, t, .09, {vol:.05, f2:f, glide:.06});
     },
-    coin: t => { bell(1976, t, .07, .5); bell(2637, t + .07, .06, .6); },
+    coin: t => { coins(t, 6); marimba(mf(91), t, .3, .06); },
     buy: t => {
-      noise(t, .09, {vol:.3, freq:2500, q:.8});
-      bell(2093, t + .05, .09, 1.1); bell(3136, t + .05, .05, .9);
-      for (let k = 0; k < 6; k++) bell(2600 + Math.random() * 1800, t + .18 + k * .045, .025, .25);
-      [523, 659, 784, 1047].forEach((f, k) => tone(f, t + .1 + k * .06, .35, {type:'triangle', vol:.07}));
+      noise(t, .06, {vol:.25, freq:3000});
+      [65, 69, 72].forEach(m => brass(mf(m + 12), t + .02, .16, .05)); [65, 69, 72, 77].forEach(m => brass(mf(m + 12), t + .2, .4, .055));
+      coins(t + .15, 9, .04); bell(mf(96), t + .25, .06, .9);
     },
-    pay: t => { tone(587, t, .16, {type:'triangle', vol:.12, f2:440}); tone(440, t + .13, .3, {type:'triangle', vol:.1, f2:294}); noise(t + .05, .12, {vol:.1, freq:3000}); },
+    pay: t => { [79, 76, 72].forEach((m, k) => marimba(mf(m), t + k * .08, .3, .1)); noise(t + .05, .12, {vol:.08, freq:3200}); },
     go: t => {
-      [523, 659, 784, 1047, 1319].forEach((f, k) => { tone(f, t + k * .075, k === 4 ? .8 : .2, {type:'square', vol:.045}); tone(f / 2, t + k * .075, .2, {type:'triangle', vol:.05}); });
-      [1047, 1319, 1568].forEach(f => tone(f, t + .38, .9, {vol:.06}));
-      for (let k = 0; k < 5; k++) bell(2400 + k * 300, t + .4 + k * .05, .03, .4);
+      [[72, .0, .12], [72, .13, .12], [76, .26, .12], [79, .39, .5]].forEach(([m, d, l]) => { brass(mf(m), t + d, l, .06); brass(mf(m - 12), t + d, l, .04); });
+      coins(t + .4, 12, .04); [84, 88, 91].forEach((m, k) => marimba(mf(m), t + .45 + k * .06, .4, .07));
     },
-    card: t => { noise(t, .28, {vol:.25, freq:600, f2:5000, q:.7}); tone(520, t + .12, .18, {vol:.07, f2:1300}); bell(1760, t + .26, .05, .5); },
+    card: t => { noise(t, .25, {vol:.22, freq:700, f2:6000, q:.6}); marimba(mf(84), t + .18, .4, .09); marimba(mf(91), t + .26, .5, .08); },
     jail: t => {
-      for (let k = 0; k < 3; k++) { tone(880, t + k * .34, .17, {type:'square', vol:.045}); tone(660, t + k * .34 + .17, .17, {type:'square', vol:.045}); }
-      noise(t + 1.05, .35, {vol:.6, freq:260, q:1, type:'lowpass'}); tone(90, t + 1.05, .35, {vol:.3, f2:45});
+      // cartoon "wah-wah" trombone, then the cell door
+      [[67, 0], [66, .32], [65, .64]].forEach(([m, d]) => { brass(mf(m - 12), t + d, .28, .07); });
+      const o = ac.createOscillator(), g = ac.createGain(), fl = ac.createBiquadFilter();
+      o.type = 'sawtooth'; o.frequency.setValueAtTime(mf(52), t + .96); o.frequency.linearRampToValueAtTime(mf(50), t + 1.7);
+      const lfo = ac.createOscillator(), lg = ac.createGain(); lfo.frequency.value = 6; lg.gain.value = 6; lfo.connect(lg); lg.connect(o.frequency);
+      fl.type = 'lowpass'; fl.frequency.value = 1200; g.gain.setValueAtTime(0, t + .96); g.gain.linearRampToValueAtTime(.08, t + 1.02); g.gain.exponentialRampToValueAtTime(.0001, t + 1.75);
+      o.connect(fl); fl.connect(g); g.connect(master); o.start(t + .96); o.stop(t + 1.8); lfo.start(t + .96); lfo.stop(t + 1.8);
+      noise(t + 1.8, .3, {vol:.55, freq:380, q:1.5, type:'lowpass'}); tone(95, t + 1.8, .3, {vol:.3, f2:48});
     },
-    build: t => { noise(t, .05, {vol:.55, freq:450, q:2, type:'lowpass'}); tone(170, t, .15, {vol:.25, f2:85}); noise(t + .12, .04, {vol:.3, freq:600, q:2, type:'lowpass'}); bell(1568, t + .2, .05, .5); },
-    gavel: t => { [0, .24].forEach(d => { noise(t + d, .07, {vol:.65, freq:700, q:3}); tone(210, t + d, .13, {vol:.24, f2:105}); }); },
-    doubles: t => { [1568, 2093, 2637, 3136, 4186].forEach((f, k) => bell(f, t + k * .055, .045, .5)); },
-    turn: t => { tone(784, t, .12, {vol:.06}); tone(1175, t + .08, .25, {vol:.06}); },
-    sad: t => { [392, 370, 349, 330].forEach((f, k) => tone(f, t + k * .3, k === 3 ? .9 : .28, {type:'sawtooth', vol:.055, f2:k === 3 ? 240 : undefined})); },
+    build: t => { [0, .14].forEach(d => { noise(t + d, .04, {vol:.5, freq:700, q:3}); tone(260, t + d, .07, {vol:.18, f2:160}); }); bell(mf(91), t + .3, .06, .6); },
+    gavel: t => { [0, .22].forEach(d => { noise(t + d, .06, {vol:.6, freq:800, q:3}); tone(220, t + d, .12, {vol:.22, f2:110}); }); },
+    doubles: t => { [79, 84, 88, 91, 96].forEach((m, k) => marimba(mf(m), t + k * .05, .4, .08)); coins(t + .2, 5, .035); },
+    turn: t => { marimba(mf(79), t, .3, .08); marimba(mf(84), t + .09, .4, .08); },
+    sad: t => { [70, 69, 68, 67].forEach((m, k) => brass(mf(m - 12), t + k * .28, k === 3 ? .8 : .24, .06)); },
     win: t => {
-      const n = [523, 523, 523, 659, 784, 659, 784, 1047], d = [.11, .11, .11, .24, .24, .12, .12, .9]; let x = 0;
-      n.forEach((f, k) => { tone(f, t + x, d[k] + .06, {type:'square', vol:.045}); tone(f / 2, t + x, d[k] + .06, {type:'triangle', vol:.06}); x += d[k]; });
-      for (let k = 0; k < 8; k++) bell(2000 + Math.random() * 2000, t + x - .4 + k * .06, .03, .5);
+      const seq = [[72, 0, .12], [76, .12, .12], [79, .24, .12], [84, .36, .3], [79, .7, .12], [84, .82, .9]];
+      seq.forEach(([m, d, l]) => { brass(mf(m), t + d, l, .065); brass(mf(m - 12), t + d, l, .045); });
+      noise(t + .82, .5, {vol:.15, freq:6000, type:'highpass', curve:1.2}); coins(t + .9, 16, .04);
     },
-    swoosh: t => noise(t, .25, {vol:.2, freq:500, f2:3500, q:.6}),
-    whoosh: t => { noise(t, .35, {vol:.22, freq:300, f2:4000, q:.5}); tone(300, t, .35, {vol:.04, f2:900}); }
+    swoosh: t => noise(t, .22, {vol:.18, freq:500, f2:4000, q:.6}),
+    whoosh: t => { noise(t, .32, {vol:.2, freq:300, f2:5000, q:.5}); tone(380, t + .1, .3, {vol:.035, f2:1200}); }
   };
 
-  /* --- background tune: bright pentatonic hook over I–V–vi–IV, plucked marimba-ish voice --- */
-  const BPM = 112, STEP = 60 / BPM / 2;
-  const CH = [[48, 60, 64, 67], [43, 59, 62, 67], [45, 57, 60, 64], [41, 57, 60, 65]];
-  const MEL = [72, -1, 76, -1, 79, 76, 74, -1, 72, -1, 74, 76, 74, -1, 67, -1, 69, -1, 72, -1, 76, 74, 72, -1, 74, -1, 72, 69, 72, -1, -1, -1,
-               76, -1, 79, -1, 81, 79, 76, -1, 74, -1, 76, 79, 76, -1, 72, -1, 69, -1, 72, 74, 76, -1, 79, 76, 74, -1, 72, -1, -1, -1];
-  const mf = m => 440 * Math.pow(2, (m - 69) / 12);
+  /* --- background loop: 128 bpm swing pop, walking bass, claps, horn stabs and a marimba hook --- */
+  const BPM = 128, S16 = 60 / BPM / 4, SWING = .32;
+  const CH = [[53, 57, 60, 64], [50, 53, 57, 60], [55, 58, 62, 65], [48, 52, 55, 58], [53, 57, 60, 64], [50, 53, 57, 60], [55, 58, 62, 65], [53, 57, 60, 64]];
+  const BASS = [41, 38, 43, 36, 41, 38, 43, 41];
+  const MEL = [[0,72,2],[3,74,1],[4,77,2],[6,76,1],[7,74,1],[8,72,3],[12,69,2],[14,72,2],[16,74,2],[19,72,1],[20,69,2],[22,67,2],[24,69,6],
+    [32,70,2],[35,72,1],[36,74,2],[38,77,2],[40,79,3],[44,77,2],[46,74,2],[48,76,2],[51,74,1],[52,72,2],[54,70,2],[56,67,6],
+    [64,81,2],[67,79,1],[68,77,2],[70,76,1],[71,77,1],[72,79,3],[76,77,2],[78,74,2],[80,77,2],[83,74,1],[84,72,2],[86,69,2],[88,74,4],[92,72,2],[94,69,2],
+    [96,70,2],[98,72,2],[100,74,2],[102,76,2],[104,77,2],[106,79,2],[108,76,2],[110,72,2],[112,77,6],[120,72,1],[121,74,1],[122,76,1],[123,77,1],[124,79,4]];
+  const melAt = {}; MEL.forEach(([st, m, l]) => { melAt[st] = [m, l]; });
   function musStepAt(t, i) {
-    const bar = Math.floor(i / 8) % 4, beat = i % 8, ch = CH[bar], bus = musicBus;
-    if (beat === 0) tone(mf(ch[0]), t, STEP * 7, {type:'sine', vol:.32, bus});
-    if (beat === 4) tone(mf(ch[0] + 7), t, STEP * 3, {type:'sine', vol:.2, bus});
-    if (beat === 2 || beat === 6) ch.slice(1).forEach(m => tone(mf(m), t, STEP * 1.6, {type:'triangle', vol:.05, bus}));
-    if (beat % 2 === 1) noise(t, .03, {vol:.06, freq:8000, type:'highpass', bus});
-    if (beat === 0 || beat === 4) { tone(110, t, .12, {vol:.22, f2:45, bus}); }
-    const m = MEL[i % MEL.length];
-    if (m > 0) { tone(mf(m), t, STEP * 1.8, {type:'triangle', vol:.13, bus}); tone(mf(m + 12), t, STEP * .8, {type:'sine', vol:.03, bus}); }
+    const st = i % 128, bar = Math.floor(st / 16), s = st % 16, bus = musicBus;
+    // swing: every second eighth note lands a little late
+    if (s % 4 === 2) t += S16 * SWING;
+    const root = BASS[bar], ch = (bar === 6 && s >= 8) ? [48, 52, 55, 58] : CH[bar], r = (bar === 6 && s >= 8) ? 36 : root;
+    if (s % 4 === 0) { const walk = [r, r + 7, r + 12, (BASS[(bar + 1) % 8]) - 1][s / 4]; tone(mf(walk), t, S16 * 3.4, {type:'triangle', vol:.34, bus}); tone(mf(walk), t, S16 * 2, {vol:.18, bus}); }
+    if (s === 0 || s === 8) { tone(120, t, .16, {vol:.35, f2:48, bus}); }
+    if (s === 4 || s === 12) { noise(t, .09, {vol:.32, freq:1500, q:.8, bus}); noise(t + .012, .07, {vol:.22, freq:2400, q:1, bus}); }
+    if (s % 2 === 0) noise(t, .025, {vol:s % 4 === 0 ? .07 : .045, freq:9000, type:'highpass', bus});
+    if (s === 6 || s === 14 || (s === 10 && bar % 2)) ch.forEach(m => brass(mf(m + 12), t, .11, .018, bus));
+    const mm = melAt[st];
+    if (mm) { marimba(mf(mm[0]), t, Math.min(.7, S16 * mm[1] * 1.6), .12, bus); if (bar >= 4) marimba(mf(mm[0] + 12), t, .2, .03, bus); }
   }
   function musTick() {
     if (!ac || !musicOn || !on) return;
-    while (musNext < ac.currentTime + .25) { musStepAt(musNext, musStep++); musNext += STEP; }
+    while (musNext < ac.currentTime + .25) { musStepAt(musNext, musStep++); musNext += S16; }
   }
   function startMusic() {
     if (!on || !musicOn || !ctx() || musT) return;
-    musNext = ac.currentTime + .1; musT = setInterval(musTick, 60);
-    musicBus.gain.cancelScheduledValues(ac.currentTime); musicBus.gain.setValueAtTime(0, ac.currentTime); musicBus.gain.linearRampToValueAtTime(.13, ac.currentTime + 1.5);
+    musNext = ac.currentTime + .1; musT = setInterval(musTick, 50);
+    musicBus.gain.cancelScheduledValues(ac.currentTime); musicBus.gain.setValueAtTime(0, ac.currentTime); musicBus.gain.linearRampToValueAtTime(.12, ac.currentTime + 1.5);
   }
   function stopMusic() { clearInterval(musT); musT = 0; }
   document.addEventListener('visibilitychange', () => { if (document.hidden) stopMusic(); else if (ac) startMusic(); });
