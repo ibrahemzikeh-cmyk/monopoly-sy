@@ -718,7 +718,8 @@ const UTILS = B.filter(s => s.t === 'util').map(s => s.i);
 const sqColor = i => B[i].t === 'prop' ? GRP[B[i].g].c : (B[i].t === 'rr' ? '#3b4648' : '#7b8a86');
 
 const SEATC = ['#e0473c', '#3a7bd5', '#2fa35a', '#e3ad17', '#9b59b6', '#16a5a5'];
-const TOKENS = ['🚗','🐪','🌹','☕','⛵','🏺','🎩','🐎'];
+// every piece is a character: businessman in a tarboush, girl, boy, grandpa, chef, footballer, pilot, young woman in a hijab
+const TOKENS = ['🧔','👧','👦','👴','👨‍🍳','⚽','👨‍✈️','🧕'];
 
 /* ---------- cards ---------- */
 const CH = [
@@ -1856,6 +1857,87 @@ const V3 = (() => {
     prevH = {}; for (const k in S.props) prevH[k] = S.props[k].h;
   }
   /* --- 3D token models (each faces +x, base on y=0) --- */
+  /* --- people pieces: chibi characters, clothes in the player's colour, facing +x --- */
+  function person(kind, col, g, add, M3) {
+    const {main, dark, light, gold} = M3;
+    const skins = {'🧔':0xe0ac69, '👧':0xffd5b0, '👦':0xf1c27d, '👴':0xf3c9a0, '👨‍🍳':0xe8b98a, '⚽':0xc68642, '👨‍✈️':0xf1c27d, '🧕':0xe8b98a};
+    const skin = new T.MeshStandardMaterial({color:skins[kind] || 0xf1c27d, roughness:.6});
+    const white = new T.MeshStandardMaterial({color:0xffffff, roughness:.5});
+    const pants = new T.MeshStandardMaterial({color:0x2b3a55, roughness:.6});
+    const hairC = {'👧':0x5a3418, '👦':0x2b1a10, '🧔':0x1d140e, '👨‍🍳':0x3b2414, '⚽':0x140d08, '👨‍✈️':0x3a2616};
+    const hair = new T.MeshStandardMaterial({color:hairC[kind] || 0x2b1a10, roughness:.7});
+    const red = new T.MeshStandardMaterial({color:0xc8102e, roughness:.45});
+    const long = kind === '👧' || kind === '🧕';
+    // legs and shoes
+    if (!long) [.075, -.075].forEach(z => { add(new T.CylinderGeometry(.065, .06, .26, 12), pants, 0, .15, z); add(new T.SphereGeometry(.075, 12, 8), dark, .03, .03, z).scale.set(1.4, .6, 1); });
+    else [.07, -.07].forEach(z => add(new T.SphereGeometry(.07, 12, 8), dark, .03, .03, z).scale.set(1.4, .6, 1));
+    // body: a dress for long clothes, a rounded torso otherwise
+    if (long) add(new T.ConeGeometry(.24, .5, 24), main, 0, .3, 0);
+    else { add(new T.CylinderGeometry(.15, .17, .3, 20), main, 0, .41, 0); add(new T.SphereGeometry(.15, 20, 12), main, 0, .56, 0).scale.set(1, .45, 1); }
+    // arms with hands
+    [.19, -.19].forEach((z, k) => {
+      const arm = add(new T.CylinderGeometry(.045, .05, .26, 10), main, 0, .45, z, k ? -.35 : .35, 0, 0);
+      add(new T.SphereGeometry(.055, 10, 8), skin, 0, .33, z * 1.25);
+      arm.castShadow = true;
+    });
+    // head and face
+    const hy = .78;
+    add(new T.SphereGeometry(.2, 24, 18), skin, 0, hy, 0);
+    [.065, -.065].forEach(z => { add(new T.SphereGeometry(.028, 10, 8), dark, .178, hy + .02, z); add(new T.SphereGeometry(.01, 6, 4), white, .2, hy + .03, z + .008); });
+    add(new T.TorusGeometry(.05, .012, 6, 12, Math.PI), dark, .18, hy - .06, 0, 0, Math.PI / 2, Math.PI);
+    [.11, -.11].forEach(z => add(new T.SphereGeometry(.03, 8, 6), new T.MeshStandardMaterial({color:0xff8f8f, roughness:.8, transparent:true, opacity:.6}), .15, hy - .03, z));
+    switch (kind) {
+      case '🧔': // businessman with a tarboush and moustache
+        add(new T.CylinderGeometry(.115, .135, .16, 20), red, -.01, hy + .23, 0);
+        add(new T.CylinderGeometry(.008, .008, .1, 6), dark, -.06, hy + .26, 0, 0, 0, .9);
+        add(new T.SphereGeometry(.02, 6, 6), dark, -.1, hy + .22, 0);
+        add(new T.BoxGeometry(.03, .025, .12), hair, .195, hy - .035, 0);
+        add(new T.BoxGeometry(.02, .2, .05), red, .155, .46, 0);
+        add(new T.SphereGeometry(.205, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2.4), hair, -.02, hy + .01, 0);
+        break;
+      case '👧': // girl with bunches
+        add(new T.SphereGeometry(.215, 22, 14, 0, Math.PI * 2, 0, Math.PI / 1.9), hair, -.02, hy + .01, 0);
+        [.2, -.2].forEach(z => add(new T.SphereGeometry(.07, 12, 10), hair, -.04, hy + .05, z));
+        [.2, -.2].forEach(z => add(new T.SphereGeometry(.035, 8, 6), red, -.04, hy + .1, z * .85));
+        break;
+      case '👦': // boy with a cap
+        add(new T.SphereGeometry(.21, 22, 14, 0, Math.PI * 2, 0, Math.PI / 2.3), main, 0, hy + .02, 0);
+        add(new T.BoxGeometry(.18, .02, .2), main, .16, hy + .1, 0);
+        add(new T.SphereGeometry(.205, 20, 12, 0, Math.PI * 2, Math.PI / 2.5, Math.PI / 6), hair, -.03, hy, 0);
+        break;
+      case '👴': // grandpa with beard, glasses and a cane
+        add(new T.SphereGeometry(.13, 16, 12), white, .1, hy - .1, 0).scale.set(.9, 1, 1.3);
+        add(new T.TorusGeometry(.2, .03, 8, 24), white, -.02, hy + .02, 0, Math.PI / 2, 0, 0);
+        [.065, -.065].forEach(z => add(new T.TorusGeometry(.04, .008, 6, 16), dark, .19, hy + .02, z, 0, Math.PI / 2, 0));
+        add(new T.CylinderGeometry(.015, .015, .62, 8), new T.MeshStandardMaterial({color:0x7a4a22, roughness:.6}), .12, .31, -.27);
+        add(new T.TorusGeometry(.05, .015, 6, 12, Math.PI), new T.MeshStandardMaterial({color:0x7a4a22, roughness:.6}), .08, .62, -.27);
+        break;
+      case '👨‍🍳': // chef
+        add(new T.CylinderGeometry(.15, .13, .2, 20), white, -.01, hy + .26, 0);
+        add(new T.SphereGeometry(.17, 18, 12), white, -.01, hy + .39, 0).scale.set(1, .7, 1);
+        add(new T.BoxGeometry(.03, .03, .14), hair, .195, hy - .035, 0);
+        [.06, -.06].forEach(z => add(new T.SphereGeometry(.018, 6, 6), white, .165, .44, z));
+        break;
+      case '⚽': // footballer with a headband and the ball
+        add(new T.SphereGeometry(.205, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2.6), hair, -.02, hy + .01, 0);
+        add(new T.TorusGeometry(.198, .025, 8, 24), white, 0, hy + .07, 0, Math.PI / 2, 0, 0);
+        add(new T.SphereGeometry(.09, 16, 12), white, .2, .09, .08);
+        [[.27, .12, .1], [.22, .16, .03], [.25, .05, .02]].forEach(([x, y, z]) => add(new T.SphereGeometry(.025, 6, 6), dark, x, y, z));
+        break;
+      case '👨‍✈️': // pilot captain
+        add(new T.CylinderGeometry(.2, .2, .07, 22), main, 0, hy + .17, 0);
+        add(new T.CylinderGeometry(.21, .21, .02, 22), dark, 0, hy + .135, 0);
+        add(new T.BoxGeometry(.12, .015, .2), dark, .17, hy + .13, 0);
+        add(new T.SphereGeometry(.035, 10, 8), gold, .19, hy + .18, 0).scale.set(.4, 1, 1);
+        [.07, -.07].forEach(z => add(new T.BoxGeometry(.02, .02, .06), gold, .16, .52, z));
+        break;
+      case '🧕': // young woman in a hijab, face left open
+        add(new T.SphereGeometry(.232, 26, 18, Math.PI + .95, Math.PI * 2 - 1.9, 0, Math.PI * .78), main, -.01, hy + .01, 0);
+        add(new T.CylinderGeometry(.16, .24, .16, 22), main, 0, hy - .2, 0);
+        break;
+    }
+  }
+
   function tokenModel(tok, col) {
     const g = new T.Group();
     const main = new T.MeshStandardMaterial({color:col, metalness:.55, roughness:.22, emissive:new T.Color(col), emissiveIntensity:.1, envMapIntensity:1.2});
@@ -1865,7 +1947,8 @@ const V3 = (() => {
     const green = new T.MeshStandardMaterial({color:0x2f8f4e, roughness:.5});
     const add = (geo, mat, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0) => { const m = new T.Mesh(geo, mat); m.position.set(x, y, z); m.rotation.set(rx, ry, rz); m.castShadow = true; g.add(m); return m; };
     const lathe = pts => new T.LatheGeometry(pts.map(p => new T.Vector2(p[0], p[1])), 32);
-    switch (tok) {
+    if (TOKENS.includes(tok)) person(tok, col, g, add, {main:new T.MeshStandardMaterial({color:col, roughness:.55, metalness:.05}), dark, light, gold});
+    else switch (tok) {
       case '🚗': {
         add(new T.BoxGeometry(.9, .22, .44), main, 0, .2, 0);
         add(new T.BoxGeometry(.48, .2, .4), main, -.05, .4, 0);
@@ -1988,7 +2071,7 @@ const V3 = (() => {
         avS = new T.Scene(); avS.add(new T.HemisphereLight(0xffffff, 0x445566, .55));
         const d = new T.DirectionalLight(0xffffff, .95); d.position.set(2, 4, 3); avS.add(d);
         const d2 = new T.DirectionalLight(0xcfe8ff, .35); d2.position.set(-3, 1, -2); avS.add(d2);
-        avC = new T.PerspectiveCamera(30, 1, .1, 20); avC.position.set(1.25, .95, 1.5); avC.lookAt(0, .4, 0);
+        avC = new T.PerspectiveCamera(30, 1, .1, 20); avC.position.set(1.05, .78, .7); avC.lookAt(0, .5, 0);
       }
       const m = tokenModel(tok, col);
       m.outer.traverse(o => { if (o.material && o.material.metalness !== undefined) { o.material.metalness = Math.min(o.material.metalness, .2); o.material.roughness = Math.max(o.material.roughness, .35); if (o.material.emissiveIntensity) o.material.emissiveIntensity = .04; } });
@@ -2873,13 +2956,15 @@ function showGameOver() {
 }
 
 /* ---------- setup ---------- */
-const SEAT0 = ['🚗','🐪','🌹','☕','⛵','🏺'].map((tok, k) => ({name:L('لاعب ', 'Player ') + (k + 1), tok, human:k === 0}));
+const SEAT0 = TOKENS.slice(0, 6).map((tok, k) => ({name:L('لاعب ', 'Player ') + (k + 1), tok, human:k === 0}));
 let cnt = 4, seats = SEAT0.map(x => ({...x}));
 try {
   const c = JSON.parse(store.get('monopoly-sy-cfg'));
   if (Array.isArray(c)) { cnt = Math.min(6, Math.max(2, c.length)); c.forEach((x, k) => { if (k < 6) seats[k] = x; }); }
   else if (c && Array.isArray(c.seats)) { cnt = Math.min(6, Math.max(2, c.n | 0)); c.seats.forEach((x, k) => { if (k < 6) seats[k] = x; }); }
 } catch {}
+// seats saved before the characters arrived still name the old pieces
+seats.forEach((x, k) => { if (!TOKENS.includes(x.tok)) x.tok = TOKENS[k]; });
 const cfgNow = () => seats.slice(0, cnt);
 function showSetup(canCancel) {
   const el = $('#setup');
