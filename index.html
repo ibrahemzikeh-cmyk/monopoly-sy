@@ -645,7 +645,10 @@ html,body{overflow:hidden}
 .splash .hero2 img{height:min(100%,52vh);max-width:92%;object-fit:contain;transform-origin:50% 100%;animation:abuin .8s .25s cubic-bezier(.2,1.4,.4,1) both,abubob 2.6s 1.1s ease-in-out infinite;filter:drop-shadow(0 14px 20px rgba(0,0,0,.25))}
 @keyframes abuin{from{transform:translateY(60%) scale(.6);opacity:0}}
 @keyframes abubob{0%,100%{transform:translateY(0) rotate(0)}50%{transform:translateY(-8px) rotate(-1.5deg)}}
-.splash .hello{position:absolute;top:4%;right:2%;background:#fff;color:#0f2238;border-radius:18px 18px 18px 4px;padding:8px 14px;font:800 15px/1.3 "Readex Pro",sans-serif;box-shadow:0 4px 0 #a9cbe4,0 10px 20px rgba(0,0,0,.18);animation:logoin .6s 1s cubic-bezier(.2,1.6,.4,1) both;white-space:nowrap}
+.splash .hero2 .abu3d{position:absolute;inset:0;width:100%;height:100%;animation:abufade .7s both}
+@keyframes abufade{from{opacity:0;transform:translateY(30px)}}
+.splash .hero2.on3d img{display:none}
+.splash .hello{position:absolute;top:24%;right:1%;z-index:2;background:#fff;color:#0f2238;border-radius:18px 18px 18px 4px;padding:8px 14px;font:800 15px/1.3 "Readex Pro",sans-serif;box-shadow:0 4px 0 #a9cbe4,0 10px 20px rgba(0,0,0,.18);animation:logoin .6s 1s cubic-bezier(.2,1.6,.4,1) both;white-space:nowrap}
 .splash .lbtns{width:100%;grid-template-columns:1fr 1fr;margin-top:10px}
 .splash .lbtns .btn.big{min-height:70px;border-radius:24px;font-size:20px}
 .splash .lbtns small{display:block;font-size:12px;opacity:.85;font-weight:600}
@@ -655,6 +658,7 @@ html,body{overflow:hidden}
 .helper{pointer-events:none;position:relative;z-index:3;display:flex;align-items:flex-end;gap:6px;direction:ltr;align-self:flex-end;margin:0 0 8px;max-width:min(330px,calc(100vw - 20px))}
 .hav{pointer-events:auto;flex:none;width:62px;height:62px;border-radius:50%;padding:0;border:3px solid #fff;background:radial-gradient(circle at 50% 35%,#8fe0ff,#2f8ee8);box-shadow:0 4px 0 #b86f12,0 8px 18px rgba(0,0,0,.3);overflow:hidden;cursor:pointer;font-size:34px;line-height:56px}
 .hav img{display:block;width:182%;height:auto;max-width:none;margin:-3px 0 0 -45%}
+.hav img.p3d{width:100%;margin:0}
 .hbub{pointer-events:auto;position:relative;background:#fff;color:#0f2238;border-radius:18px 18px 18px 4px;padding:8px 12px;font:700 13.5px/1.35 "Readex Pro",Tahoma,sans-serif;box-shadow:0 4px 0 #a9cbe4,0 10px 22px rgba(0,0,0,.2);margin-bottom:22px;transform-origin:0 100%;transition:opacity .25s,transform .25s}
 .hbub b{color:#c8102e;display:block;font-size:11px;letter-spacing:.3px;margin-bottom:1px}
 .hbub[dir=rtl]{text-align:right}
@@ -1808,7 +1812,8 @@ function helperStep() {
   const t = helperTip();
   el.hidden = !t; if (!t) return;
   const av = $('#hav');
-  if (!av.dataset.ok) { av.innerHTML = `<img src="${ABU_URL}" alt="">`; av.dataset.ok = 1; }
+  const pic = ABU3D && ABU3D.portrait;
+  if (av.dataset.ok !== (pic ? '3d' : '2d')) { av.innerHTML = pic ? `<img class="p3d" src="${pic}" alt="">` : `<img src="${ABU_URL}" alt="">`; av.dataset.ok = pic ? '3d' : '2d'; }
   if (t[0] === helperKey) return;
   helperKey = t[0]; helperHide = false;
   const b = $('#hbub'); b.setAttribute('dir', LANG === 'ar' ? 'rtl' : 'ltr');
@@ -1829,6 +1834,153 @@ function render() {
   if (NET.mode === 'host') NET.push();
   maybeAI();
 }
+
+/* ---------- Abu al-Khair in 3D: a realistic gentleman model in a navy suit and a red tarboush, posed by hand ---------- */
+const ABU3D = (() => {
+  const T = window.THREE; if (!T || !T.GLTFLoader) return null;
+  const URL3D = 'models/Abu.glb';
+  const recolored = {};
+  function recolor(tex, rules) {
+    const im = tex && tex.image; if (!im || !im.width) return tex;
+    if (recolored[tex.uuid]) return recolored[tex.uuid];
+    const c = document.createElement('canvas'); c.width = im.width; c.height = im.height;
+    const x = c.getContext('2d'); x.drawImage(im, 0, 0);
+    const d = x.getImageData(0, 0, c.width, c.height), p = d.data;
+    for (let k = 0; k < p.length; k += 4) {
+      const r = p[k] / 255, g = p[k + 1] / 255, b = p[k + 2] / 255, mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, dl = mx - mn;
+      const s = dl ? dl / (1 - Math.abs(2 * l - 1)) : 0;
+      let h = 0; if (dl) h = mx === r ? ((g - b) / dl + 6) % 6 : mx === g ? (b - r) / dl + 2 : (r - g) / dl + 4; h *= 60;
+      const to = rules(h, s, l); if (!to) continue;
+      const f = Math.min(1.6, l / .55);
+      p[k] = Math.min(255, to[0] * f); p[k + 1] = Math.min(255, to[1] * f); p[k + 2] = Math.min(255, to[2] * f);
+    }
+    x.putImageData(d, 0, 0);
+    const t = new T.CanvasTexture(c); t.flipY = tex.flipY; t.encoding = tex.encoding; t.wrapS = tex.wrapS; t.wrapT = tex.wrapT; t.anisotropy = 4;
+    return (recolored[tex.uuid] = t);
+  }
+  // navy for the cloth, deep red for the waistcoat; the shirt, the rose and its leaves keep their colours
+  const suitRule = (h, s, l) => {
+    if (s > .55) return null;
+    if (h > 285 && h < 345) return [128, 20, 34];
+    if (l > .7 && s < .3) return null;
+    if (h < 55 || h > 340) return [40, 54, 104];
+    return null;
+  };
+  function dress(root) {
+    const bones = {};
+    root.traverse(o => {
+      if (o.isBone) bones[o.name] = o;
+      if (!o.isMesh) return;
+      o.castShadow = true; o.frustumCulled = false;
+      const n = o.name;
+      if (n === 'Wolf3D_Headwear') { o.visible = false; return; }
+      if (n === 'Wolf3D_Outfit_Top' || n === 'Wolf3D_Outfit_Bottom') { o.material = o.material.clone(); o.material.map = recolor(o.material.map, suitRule); o.material.needsUpdate = true; }
+      // a friendly smile
+      if (o.morphTargetDictionary && o.morphTargetDictionary.mouthSmile !== undefined) o.morphTargetInfluences[o.morphTargetDictionary.mouthSmile] = .55;
+    });
+    // the tarboush sits on the head bone
+    const head = bones.Head, top = bones.HeadTop_End;
+    if (head && top) {
+      const len = top.position.length(), fez = new T.Group();
+      const red = new T.MeshStandardMaterial({color:0x8e0914, roughness:.8, envMapIntensity:.4});
+      const body = new T.Mesh(new T.CylinderGeometry(.078, .1, .15, 32, 1), red); body.position.y = .06; body.castShadow = true; fez.add(body);
+      const band = new T.Mesh(new T.CylinderGeometry(.101, .102, .022, 32, 1), new T.MeshStandardMaterial({color:0x7a0610, roughness:.5})); band.position.y = -.004; fez.add(band);
+      const cap = new T.Mesh(new T.CircleGeometry(.078, 32), red); cap.rotation.x = -Math.PI / 2; cap.position.y = .135; fez.add(cap);
+      const black = new T.MeshStandardMaterial({color:0x111015, roughness:.7});
+      const knot = new T.Mesh(new T.SphereGeometry(.011, 10, 8), black); knot.position.y = .138; fez.add(knot);
+      const cord = new T.Mesh(new T.CylinderGeometry(.003, .003, .09, 6), black); cord.position.set(-.04, .12, 0); cord.rotation.z = -1.1; fez.add(cord);
+      const tassel = new T.Mesh(new T.CylinderGeometry(.008, .022, .09, 10), black); tassel.position.set(-.1, .065, 0); tassel.rotation.z = .22; fez.add(tassel);
+      fez.position.set(0, len * .66, -.005); fez.rotateX(-.12); fez.rotateY(Math.PI * .75); fez.scale.set(.9, .86, .9);
+      head.add(fez);
+    }
+    const rest = {};
+    for (const k in bones) rest[k] = bones[k].quaternion.clone();
+    return {root, bones, rest, mode:'idle', t0:0};
+  }
+  // hand-made motion: breathing, glancing around, a friendly wave, a nod and a head shake
+  const q = new T.Quaternion(), e = new T.Euler();
+  const turn = (A, name, x, y, z) => { const b = A.bones[name]; if (b) b.quaternion.copy(A.rest[name]).multiply(q.setFromEuler(e.set(x, y, z))); };
+  function pose(A, now, mode) {
+    if (mode !== A.mode) { A.mode = mode; A.t0 = now; }
+    const t = now / 1000, u = (now - A.t0) / 1000, br = Math.sin(t * 1.6);
+    turn(A, 'Spine', .02 * br, 0, 0);
+    turn(A, 'Spine1', .015 * br, 0, 0);
+    turn(A, 'Spine2', -.02, .05 * Math.sin(t * .4), 0);
+    turn(A, 'Head', .15 + .03 * Math.sin(t * .7), .35 * Math.sin(t * .33), .03 * Math.sin(t * .5));
+    turn(A, 'LeftArm', .45, 0, .05 + .015 * br);
+    turn(A, 'LeftForeArm', .25, 0, 0);
+    const wave = mode === 'wave' ? Math.min(1, u * 3) * Math.min(1, Math.max(0, (2.6 - u) * 3)) : 0, sw = Math.sin(u * 9) * .35;
+    turn(A, 'RightArm', .45 - wave * 1.35, 0, -.05);
+    turn(A, 'RightForeArm', .25 - wave * (1.45 + .5 * sw), 0, 0);
+    turn(A, 'RightHand', 0, 0, wave * sw * .6);
+    if (mode === 'yes') turn(A, 'Head', .15 + .22 * Math.sin(Math.min(1.6, u) / 1.6 * Math.PI * 3) * Math.max(0, 1 - u / 1.6), 0, 0);
+    if (mode === 'no') turn(A, 'Head', .12, .4 * Math.sin(u * 10) * Math.max(0, 1 - u / 1.4), 0);
+  }
+  // one download shared by the start screen and the board; hosts that cannot serve .glb get a base64 copy
+  let src = null, waits = null;
+  function load(cb) {
+    if (src) return cb();
+    if (waits) return waits.push(cb);
+    waits = [cb];
+    const ld = new T.GLTFLoader(), done = g => { src = g; const w = waits; waits = []; w.forEach(f => { try { f(); } catch {} }); };
+    const fallback = () => fetch(URL3D + '.txt').then(r => r.ok ? r.text() : Promise.reject())
+      .then(t => { const bin = atob(t.trim()), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); ld.parse(u8.buffer, '', done, () => {}); })
+      .catch(() => {});
+    ld.load(URL3D, done, undefined, fallback);
+  }
+  const make = () => dress(T.SkeletonUtils ? T.SkeletonUtils.clone(src.scene) : src.scene);
+  const lights = sc => {
+    sc.add(new T.HemisphereLight(0xffffff, 0x7fb0d8, .85));
+    const k = new T.DirectionalLight(0xfff3e0, 1.35); k.position.set(2, 4, 3); sc.add(k);
+    const r = new T.DirectionalLight(0xbfe0ff, .7); r.position.set(-3, 2.5, -2); sc.add(r);
+  };
+  // a head-and-shoulders picture for the tips corner
+  let portrait = null;
+  function makePortrait() {
+    if (portrait || !src) return;
+    try {
+      const R = new T.WebGLRenderer({antialias:true, alpha:true, preserveDrawingBuffer:true});
+      R.setPixelRatio(1); R.setSize(192, 192, false); R.outputEncoding = T.sRGBEncoding; R.toneMapping = T.ACESFilmicToneMapping; R.setClearColor(0, 0);
+      const sc = new T.Scene(); lights(sc); const A = make(); sc.add(A.root);
+      pose(A, 0, 'idle'); turn(A, 'Head', .1, -.15, 0); A.root.rotation.y = -.25; A.root.updateMatrixWorld(true);
+      const cam = new T.PerspectiveCamera(30, 1, .05, 10); cam.position.set(.18, 1.66, .78); cam.lookAt(0, 1.63, 0);
+      R.render(sc, cam); portrait = R.domElement.toDataURL('image/png');
+      R.dispose(); if (R.forceContextLoss) R.forceContextLoss();
+    } catch {}
+  }
+  // the start screen: he stands in the middle and waves now and then
+  function stage(host) {
+    let R; try { R = new T.WebGLRenderer({antialias:true, alpha:true}); } catch { return; }
+    R.outputEncoding = T.sRGBEncoding; R.toneMapping = T.ACESFilmicToneMapping; R.toneMappingExposure = 1.05;
+    R.setPixelRatio(Math.min(2, window.devicePixelRatio || 1)); R.setClearColor(0, 0);
+    R.domElement.className = 'abu3d';
+    const sc = new T.Scene(); lights(sc);
+    const cam = new T.PerspectiveCamera(24, 1, .1, 30);
+    load(() => {
+      makePortrait();
+      if (!host.isConnected) return;
+      const A = make(); sc.add(A.root); A.root.rotation.y = -.2;
+      host.prepend(R.domElement); host.classList.add('on3d');
+      const t0 = performance.now(); let w = 0, h = 0;
+      const loop = now => {
+        if (!host.isConnected || host.closest('[hidden]')) { R.dispose(); if (R.forceContextLoss) R.forceContextLoss(); return; }
+        requestAnimationFrame(loop);
+        if (host.clientWidth !== w || host.clientHeight !== h) {
+          w = host.clientWidth; h = host.clientHeight; if (!w || !h) return;
+          R.setSize(w, h, false); cam.aspect = w / h;
+          // fit the whole figure, by height or by width, whichever is tighter
+          const vh = 2.1, vw = 1.2, tv = Math.tan(cam.fov * Math.PI / 360), d = Math.max(vh / 2 / tv, vw / 2 / (tv * cam.aspect));
+          cam.position.set(0, 1, d); cam.lookAt(0, .98, 0); cam.updateProjectionMatrix();
+        }
+        const k = ((now - t0) / 1000 - .4) % 8;
+        pose(A, now, k > 0 && k < 2.6 ? 'wave' : 'idle');
+        R.render(sc, cam);
+      };
+      requestAnimationFrame(loop);
+    });
+  }
+  return {load, make, pose, stage, makePortrait, get portrait() { return portrait; }};
+})();
 
 /* ---------- 3D board (three.js) ---------- */
 const V3 = (() => {
@@ -2524,6 +2676,7 @@ const V3 = (() => {
     r.rotation.x = -Math.PI / 2; r.position.set(c.x, .02, c.z); scene.add(r); waves.push({m:r, t0:performance.now()});
   }
   function react(pid, kind) {
+    abuAct(kind);
     const pw = pawns[pid]; if (!pw || !pw.ch || !pw.ch.c[kind] || reduce) return;
     const cl = T.AnimationClip.findByName(pw.ch.src.animations, pw.ch.c[kind]); if (!cl) return;
     const a = pw.ch.mixer.clipAction(cl); a.reset(); a.setLoop(T.LoopOnce, 1); a.clampWhenFinished = false;
@@ -2644,7 +2797,8 @@ const V3 = (() => {
   /* --- the city around the board: a stone plaza, streets, blocks of buildings, parks, traffic and passers-by --- */
   const GY = -.92;                    // street level
   const cars = [], walkers = [];
-  let mascot = null;
+  let mascot = null, abu = null, abuMode = 'idle', abuUntil = 0;
+  function abuAct(kind) { abuMode = kind; abuUntil = performance.now() + 2600; if (abu) abu.mode = ''; }
   function makeCity() {
     scene.fog = new T.Fog(0xcfe6f7, 48, 120);
     let seed = 7;
@@ -2833,6 +2987,7 @@ const V3 = (() => {
       const p = loopAt(w.r, w.s); w.g.position.x = p.x; w.g.position.z = p.z; w.g.rotation.y = w.speed > 0 ? -p.a : Math.PI - p.a;
       w.g.position.y = GY + .15 + Math.abs(Math.sin(now / 160 + w.ph)) * .05;
     });
+    if (abu) ABU3D.pose(abu, now, now < abuUntil ? abuMode : 'idle');
     if (mascot) { mascot.position.y = -.34 + Math.abs(Math.sin(now / 520)) * .08; mascot.material.rotation = Math.sin(now / 1300) * .035; }
   }
   // the host, Abu al-Khair, stands on the plaza beside the board
@@ -2845,6 +3000,10 @@ const V3 = (() => {
     const ped = new T.Mesh(new T.CylinderGeometry(.48, .52, .1, 28), new T.MeshStandardMaterial({color:0xe0a93a, metalness:.7, roughness:.3}));
     ped.position.set(0, -.39, -7.05); ped.castShadow = true; scene.add(ped);
     scene.add(sp); mascot = sp;
+    if (ABU3D) ABU3D.load(() => {
+      const A = ABU3D.make(); A.root.scale.setScalar(1.3); A.root.position.set(0, -.34, -6.95);
+      scene.add(A.root); scene.remove(sp); mascot = null; abu = A; ABU3D.makePortrait(); abuAct('wave');
+    });
   }
   function makeBeam() {
     const geo = new T.CylinderGeometry(.06, .5, 3.4, 40, 1, true); geo.translate(0, 1.7, 0);
@@ -3099,7 +3258,7 @@ const V3 = (() => {
     get hq() { return HQ; },
     setHQ(v) { HQ = !!v; store.set('monopoly-sy-hq', HQ ? 'high' : 'low'); if (!ok) return; applyQuality(); makeBoardTexture(); texSig = ''; sync(); },
     // a new game starts up over the city and glides down to the board
-    intro() { if (!reduce && camMode !== 'free') { userHold = 0; view.rad = fitR * 1.7; view.pol = .85; view.az = -.6; } },
+    intro() { abuAct('wave'); if (!reduce && camMode !== 'free') { userHold = 0; view.rad = fitR * 1.7; view.pol = .85; view.az = -.6; } },
     setActive(v) { active = !!v && ok; if (tagsEl) tagsEl.hidden = !active; if (active) { resize(); sync(); } },
     avatar, landTag
   };
@@ -3379,6 +3538,7 @@ function showLang(done) {
     <div class="hint2">اختر اللغة لتبدأ · Pick a language to start</div></div>`;
   el.querySelector(`[data-lang="${LANG}"]`).classList.add('cur');
   el.hidden = false;
+  if (ABU3D) ABU3D.stage(el.querySelector('.hero2'));
   el.onclick = e => {
     const b = e.target.closest('[data-lang]'); if (!b) return;
     SFX.unlock(); setLang(b.dataset.lang); SFX.play('go');
