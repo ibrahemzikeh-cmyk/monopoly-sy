@@ -2996,7 +2996,7 @@ const V3 = (() => {
       w.g.position.y = GY + .15 + Math.abs(Math.sin(now / 160 + w.ph)) * .05;
     });
     if (abu) ABU3D.pose(abu, now, now < abuUntil ? abuMode : 'idle');
-    if (mascot) { mascot.position.y = -.34 + Math.abs(Math.sin(now / 520)) * .08; mascot.material.rotation = Math.sin(now / 1300) * .035; }
+    if (mascot) { mascot.position.y = GY; mascot.material.rotation = Math.sin(now / 1300) * .035; }
   }
   // the host, Abu al-Khair, stands on the plaza beside the board
   function makeMascot() {
@@ -3004,12 +3004,11 @@ const V3 = (() => {
     const tx = new T.CanvasTexture(c); tx.encoding = T.sRGBEncoding; tx.anisotropy = 4;
     const img = new Image(); img.onload = () => { try { c.getContext('2d').drawImage(img, 0, 0, 400, 560); tx.needsUpdate = true; } catch {} }; img.src = ABU_URL;
     const sp = new T.Sprite(new T.SpriteMaterial({map:tx, transparent:true, alphaTest:.05, toneMapped:false}));
-    sp.center.set(.5, .035); sp.scale.set(2.5, 3.5, 1); sp.position.set(0, -.34, -7.05);
-    const ped = new T.Mesh(new T.CylinderGeometry(.48, .52, .1, 28), new T.MeshStandardMaterial({color:0xe0a93a, metalness:.7, roughness:.3}));
-    ped.position.set(0, -.39, -7.05); ped.castShadow = true; scene.add(ped);
+    // he stands outside the city, behind the far buildings, out of the way of the board
+    sp.center.set(.5, .035); sp.scale.set(7, 9.8, 1); sp.position.set(0, GY, -27);
     scene.add(sp); mascot = sp;
     if (ABU3D) ABU3D.load(() => {
-      const A = ABU3D.make(); A.root.scale.setScalar(1.3); A.root.position.set(0, -.34, -6.95);
+      const A = ABU3D.make(); A.root.scale.setScalar(5); A.root.position.set(0, GY, -27);
       scene.add(A.root); scene.remove(sp); mascot = null; abu = A; ABU3D.makePortrait(); abuAct('wave');
     });
   }
