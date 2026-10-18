@@ -260,6 +260,8 @@ button{font:inherit;color:inherit}
 .hero .lar{font-family:var(--display);font-size:clamp(44px,13vw,64px);color:var(--gold);line-height:1;text-shadow:0 4px 0 rgba(0,0,0,.35)}
 .hero .len{letter-spacing:.6em;font-size:13px;padding-inline-start:.6em;direction:ltr}
 .hero p{margin:6px 0 0;color:var(--muted);font-size:13px;line-height:1.6}
+.lvrow .seg button{min-width:64px}
+.tokb img.av{width:100%;height:100%;border-radius:50%;object-fit:cover;display:block}
 .cntrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px;border-radius:16px;background:var(--night-2)}
 .seg.cnt button{min-width:40px;padding:8px 6px}
 .seg.cnt button .ar{font-size:17px}
@@ -921,7 +923,7 @@ const owned = p => Object.keys(S.props).map(Number).filter(i => S.props[i].o ===
 
 function newState(cfg) {
   const st = {
-    v:1, gid:Math.random().toString(36).slice(2, 10), logN:0, cur:0, dc:0, phase:'roll', canRoll:false, dice:[3,4], log:[], msg:null, turn:1, bankH:32, bankT:12,
+    v:1, lv:typeof aiLv === 'string' ? aiLv : 'med', gid:Math.random().toString(36).slice(2, 10), logN:0, cur:0, dc:0, phase:'roll', canRoll:false, dice:[3,4], log:[], msg:null, turn:1, bankH:32, bankT:12,
     players: cfg.map((c,k) => ({id:k, name:c.name, tok:c.tok, col:SEATC[k], human:c.human, remote:!!c.remote, key:c.key || null, cash:1500, pos:0, jail:false, jt:0, goojf:[], bk:false})),
     props:{}, decks:{chance:shuffle([...Array(16).keys()]), chest:shuffle([...Array(16).keys()])}
   };
@@ -1317,10 +1319,21 @@ async function auction(i) {
   render();
 }
 
-/* ---------- computer players ---------- */
+/* ---------- computer players: easy, medium (the original play) and hard ---------- */
+const LV = () => (S && S.lv) || 'med';
+// someone else is one lot short of this colour set
+const blocks = (p, i) => B[i].t === 'prop' && alive().some(o => o !== p && GROUPS[B[i].g].filter(j => S.props[j].o === o.id).length === GROUPS[B[i].g].length - 1);
 function aiWantsBuy(p, i) {
   const s = B[i]; if (p.cash < s.p) return false;
-  const left = p.cash - s.p;
+  const left = p.cash - s.p, lv = LV();
+  // easy: buys on a whim and keeps a large cushion
+  if (lv === 'easy') return left >= 320 && Math.random() < .6;
+  if (lv === 'hard') {
+    if (s.t === 'prop' && GROUPS[s.g].filter(j => S.props[j].o === p.id).length === GROUPS[s.g].length - 1) return true;
+    if (blocks(p, i)) return left >= 0;
+    if (s.t === 'rr') return left >= 40;
+    return left >= 70;
+  }
   if (s.t === 'prop') {
     const g = GROUPS[s.g], mine = g.filter(j => S.props[j].o === p.id).length, theirs = g.filter(j => S.props[j].o !== null && S.props[j].o !== p.id).length;
     if (mine === g.length - 1) return true;
@@ -1329,14 +1342,14 @@ function aiWantsBuy(p, i) {
   return left >= 120;
 }
 function aiMaxBid(b, i) {
-  const s = B[i]; let f = 0.85;
+  const s = B[i], lv = LV(); let f = lv === 'hard' ? 1.05 : .85;
   if (s.t === 'prop') {
     const g = GROUPS[s.g], mine = g.filter(j => S.props[j].o === b.id).length;
-    if (mine === g.length - 1) f = 1.6; else if (mine) f = 1.15;
-    const other = alive().find(o => o !== b && g.filter(j => S.props[j].o === o.id).length === g.length - 1);
-    if (other) f = Math.max(f, 1.25);
+    if (mine === g.length - 1) f = lv === 'hard' ? 1.9 : 1.6; else if (mine) f = lv === 'hard' ? 1.3 : 1.15;
+    if (blocks(b, i)) f = Math.max(f, lv === 'hard' ? 1.6 : 1.25);
   }
-  return Math.min(Math.round(s.p * f), b.cash - 60);
+  if (lv === 'easy') f = Math.min(f * .6, .8);
+  return Math.min(Math.round(s.p * f), b.cash - (lv === 'hard' ? 30 : lv === 'easy' ? 250 : 60));
 }
 function aiRaise(p, amt) {
   let guard = 0;
@@ -1351,10 +1364,11 @@ function aiRaise(p, amt) {
 }
 const keep = (p, i) => B[i].p + (B[i].t === 'prop' && ownsAll(p.id, B[i].g) ? 1000 : 0);
 function aiManage(p) {
-  for (const i of owned(p)) if (S.props[i].m && p.cash - unmortCost(i) > 450) unmortgage(p, i);
+  const lv = LV(), reserve = {easy:520, med:220, hard:130}[lv], limit = lv === 'easy' ? 1 : 60;
+  for (const i of owned(p)) if (S.props[i].m && p.cash - unmortCost(i) > (lv === 'easy' ? 700 : lv === 'hard' ? 300 : 450)) unmortgage(p, i);
   let built = 0, guard = 0;
-  while (guard++ < 60) {
-    const c = owned(p).filter(i => canBuild(p, i) && p.cash - B[i].h >= 220);
+  while (guard++ < 60 && built < limit) {
+    const c = owned(p).filter(i => canBuild(p, i) && p.cash - B[i].h >= reserve);
     if (!c.length) break;
     c.sort((a, b) => S.props[a].h - S.props[b].h || B[b].p - B[a].p);
     build(p, c[0]); built++;
@@ -1376,8 +1390,11 @@ async function aiAct() {
   if (S.phase === 'roll') {
     if (p.jail) {
       const unowned = Object.values(S.props).filter(x => x.o === null).length;
-      if (p.goojf.length) useCard();
-      else if (p.cash >= 50 && (unowned > 8 || p.cash > 900)) payJail();
+      const lv = LV();
+      // late in the game a hard player sits in jail on purpose, safe from rents, and rolls for doubles
+      if (lv === 'hard') { if (unowned > 6 && p.cash >= 50) { if (p.goojf.length) useCard(); else payJail(); } }
+      else if (p.goojf.length) useCard();
+      else if (p.cash >= 50 && (lv === 'easy' || unowned > 8 || p.cash > 900)) payJail();
     }
     return doRoll();
   }
@@ -1391,15 +1408,17 @@ async function aiAct() {
 }
 // a computer one property short of a full colour set offers cash for it (at most every few turns)
 async function aiTrade(p) {
-  if (S.turn - (p.lastTrade || -99) < 4) return;
+  const lv = LV();
+  if (lv === 'easy') return;
+  if (S.turn - (p.lastTrade || -99) < (lv === 'hard' ? 2 : 4)) return;
   for (const g in GROUPS) {
     const G = GROUPS[g], mine = G.filter(i => S.props[i].o === p.id);
     if (mine.length !== G.length - 1) continue;
     const miss = G.find(i => S.props[i].o !== p.id), st = S.props[miss];
     if (st.o === null || groupHasB(miss)) continue;
     const q = P(st.o); if (!q || q.bk) continue;
-    const offer = Math.min(p.cash - 150, Math.round(B[miss].p * 1.9 / 10) * 10);
-    if (offer < B[miss].p * 1.2) continue;
+    const offer = Math.min(p.cash - (lv === 'hard' ? 100 : 150), Math.round(B[miss].p * (lv === 'hard' ? 2.6 : 1.9) / 10) * 10);
+    if (offer < B[miss].p * (lv === 'hard' ? 2.5 : 1.2)) continue;
     const o = {from:p, to:q, A:[], B:[miss], cA:offer, cB:0, gA:0, gB:0};
     if (!tradeValid(o)) continue;
     p.lastTrade = S.turn;
@@ -1417,16 +1436,22 @@ function strength(pid, own) {
   return v;
 }
 function aiAccepts(o) {
-  const ai = o.to, pr = o.from;
+  const ai = o.to, pr = o.from, lv = LV();
+  const after0 = i => o.A.includes(i) ? ai.id : o.B.includes(i) ? pr.id : S.props[i].o;
+  // a hard player never hands over the last lot of a colour set without a very good price
+  const givesSet = Object.keys(GROUPS).some(g => GROUPS[g].every(i => after0(i) === pr.id) && !GROUPS[g].every(i => S.props[i].o === pr.id));
+  if (lv === 'hard' && givesSet && o.cA < o.B.reduce((a, i) => a + B[i].p, 0) * 2.5) return false;
   // a plain cash offer for one lot: take it when it pays well and the lot is not part of our own near-set
   if (!o.A.length && o.B.length === 1 && !o.gA && !o.gB && !o.cB) {
     const i = o.B[0], s = B[i], mineIn = s.t === 'prop' ? GROUPS[s.g].filter(j => S.props[j].o === ai.id).length : 0;
-    if (o.cA >= s.p * 1.8 && mineIn <= 1) return true;
+    if (o.cA >= s.p * {easy:1.3, med:1.8, hard:2.5}[lv] && mineIn <= 1) return true;
   }
   const after = i => o.A.includes(i) ? ai.id : o.B.includes(i) ? pr.id : S.props[i].o;
   const before = i => S.props[i].o;
   const dAi = strength(ai.id, after) - strength(ai.id, before) + o.cA - o.cB + (o.gA - o.gB) * 50;
   const dPr = strength(pr.id, after) - strength(pr.id, before) + o.cB - o.cA + (o.gB - o.gA) * 50;
+  if (lv === 'easy') return dAi >= -30;
+  if (lv === 'hard') return dAi >= 60 && dAi >= dPr + 20;
   return dAi >= 25 && dAi >= dPr - 40;
 }
 
@@ -1771,7 +1796,7 @@ const pbtn = (a, ar, en, cls, dis) => `<button class="btn ${cls || ''}" data-a="
 function renderPanel() {
   const p = cp(), busy = busyNow(); let acts;
   if (S.phase === 'over') acts = pbtn('new', NET.mode === 'client' ? 'اطلع من الغرفة' : 'لعبة جديدة', NET.mode === 'client' ? 'Leave room' : 'New game', 'pri big');
-  else if (aiCtl(p)) acts = `<div class="aiwait">${p.human ? bi(`📡 ${pn(p)} مو متصل، الكمبيوتر عم يلعب عنه…`, `📡 ${pn(p)} is offline, the computer plays for them…`) : bi('🤖 الكمبيوتر يلعب…', 'Computer is playing…')}</div>`;
+  else if (aiCtl(p)) acts = `<div class="aiwait">${p.human ? bi(`📡 ${pn(p)} مو متصل، الكمبيوتر عم يلعب عنه…`, `📡 ${pn(p)} is offline, the computer plays for them…`) : bi(`🤖 الكمبيوتر يلعب… <small>(${{easy:'سهل', med:'وسط', hard:'صعب'}[LV()]})</small>`, `Computer is playing… <small>(${{easy:'easy', med:'medium', hard:'hard'}[LV()]})</small>`)}</div>`;
   else if (!isLocal(p)) acts = `<div class="aiwait">${bi(`⏳ دور ${pn(p)}… عم يلعب من موبايله <span class="cd"></span>`, `⏳ ${pn(p)}'s turn… playing on their phone <span class="cd"></span>`)}</div>`;
   else if (S.phase === 'roll' && p.jail) acts =
     pbtn('jroll', 'ارمِ للدوبل', `Roll for doubles (${p.jt + 1}/3)`, 'pri', busy) +
@@ -3683,9 +3708,10 @@ function showGameOver() {
 
 /* ---------- setup ---------- */
 const SEAT0 = [0, 1, 2, 3, 4, 5].map(k => TOKENS[k % TOKENS.length]).map((tok, k) => ({name:L('لاعب ', 'Player ') + (k + 1), tok, human:k === 0}));
-let cnt = 4, seats = SEAT0.map(x => ({...x}));
+let cnt = 4, seats = SEAT0.map(x => ({...x})), aiLv = 'med';
 try {
   const c = JSON.parse(store.get('monopoly-sy-cfg'));
+  if (c && ['easy', 'med', 'hard'].includes(c.lv)) aiLv = c.lv;
   if (Array.isArray(c)) { cnt = Math.min(6, Math.max(2, c.length)); c.forEach((x, k) => { if (k < 6) seats[k] = x; }); }
   else if (c && Array.isArray(c.seats)) { cnt = Math.min(6, Math.max(2, c.n | 0)); c.seats.forEach((x, k) => { if (k < 6) seats[k] = x; }); }
 } catch {}
@@ -3700,10 +3726,11 @@ function showSetup(canCancel) {
         <p>${L('من 2 إلى 6 لاعبين · القوانين الرسمية<br>من الرمل الجنوبي إلى الشاطئ الأزرق', '2–6 players · official rules<br>From South Raml to Blue Beach')}</p></div>
       <div class="cntrow"><span class="bil">${bi('عدد اللاعبين', 'Number of players')}</span><div class="seg cnt">${[2,3,4,5,6].map(n => `<button data-cnt="${n}" class="${n === cnt ? 'on' : ''}"><span class="ar">${n}</span></button>`).join('')}</div></div>
       ${cfgNow().map((c, k) => `<div class="seat" style="--pc:${SEATC[k]}">
-        <button class="tokb" data-tok="${k}" aria-label="Change token">${c.tok}</button>
+        <button class="tokb" data-tok="${k}" aria-label="Change token">${(() => { const u = V3 && V3ready ? V3.avatar(c.tok, SEATC[k]) : null; return u ? `<img class="av" src="${u}" alt="">` : c.tok; })()}</button>
         <input id="sn${k}" value="${esc(c.name)}" maxlength="14" aria-label="Player ${k + 1} name">
         <div class="seg"><button data-hu="${k}" data-val="1" class="${c.human ? 'on' : ''}">${bi('لاعب', 'Human')}</button><button data-hu="${k}" data-val="0" class="${c.human ? '' : 'on'}">${bi('كمبيوتر', 'Computer')}</button></div>
       </div>`).join('')}
+      ${cfgNow().some(c => !c.human) ? `<div class="cntrow lvrow"><span class="bil">${bi('مستوى الكمبيوتر', 'Computer level')}</span><div class="seg cnt">${[['easy', 'سهل', 'Easy', '🙂'], ['med', 'وسط', 'Medium', '😐'], ['hard', 'صعب', 'Hard', '😈']].map(([v, ar, en, e]) => `<button data-lv="${v}" class="${v === aiLv ? 'on' : ''}">${bi(e + ' ' + ar, en)}</button>`).join('')}</div></div>` : ''}
       <button class="btn pri big" id="startG">${bi('ابدأ اللعب على هالجهاز', 'Start on this device')}</button>
       <button class="btn big online" id="goOnline">${bi('🌐 العب أونلاين، كل واحد من موبايله', '🌐 Play online, each on their own phone')}</button>
       ${canCancel ? `<button class="btn ghost" id="cancelG">${bi('رجوع للعبة الحالية', 'Back to current game')}</button>` : ''}
@@ -3725,11 +3752,13 @@ function showSetup(canCancel) {
     }
     const h = e.target.closest('[data-hu]');
     if (h) { seats[+h.dataset.hu].human = h.dataset.val === '1'; draw(); return; }
+    const lb = e.target.closest('[data-lv]');
+    if (lb) { aiLv = lb.dataset.lv; store.set('monopoly-sy-cfg', JSON.stringify({n:cnt, seats, lv:aiLv})); draw(); return; }
     if (e.target.closest('#cancelG')) { el.hidden = true; render(); return; }
     if (e.target.closest('#goOnline')) { onlineScreen('menu'); return; }
     if (e.target.closest('#startG')) {
       seats.forEach((c, k) => { c.name = (c.name || '').trim() || L('لاعب ', 'Player ') + (k + 1); });
-      store.set('monopoly-sy-cfg', JSON.stringify({n:cnt, seats}));
+      store.set('monopoly-sy-cfg', JSON.stringify({n:cnt, seats, lv:aiLv}));
       clearTimeout(aiT); busy = false;
       $('#modal').hidden = true; $('#modal').innerHTML = '';
       if (NET.mode !== 'off') NET.leave();
@@ -4145,14 +4174,14 @@ function onlineScreen(view) {
     if (t.closest('[data-otok]')) { let n = TOKENS.indexOf(me.tok); me.tok = TOKENS[(n + 1) % TOKENS.length]; draw(); return; }
     if (t.closest('#oBack')) { NET.onLobby = null; showSetup(false); return; }
     if (t.closest('#oCreate')) {
-      me.name = (me.name || '').trim() || L('لاعب 1', 'Player 1'); store.set('monopoly-sy-cfg', JSON.stringify({n:cnt, seats}));
+      me.name = (me.name || '').trim() || L('لاعب 1', 'Player 1'); store.set('monopoly-sy-cfg', JSON.stringify({n:cnt, seats, lv:aiLv}));
       if (wait) return; wait = true; err = null; draw();
       try { await NET.create(); view = 'host'; } catch { err = ['ما قدرنا نعمل غرفة. جرّب كمان مرة.', 'Could not create a room. Try again.']; }
       wait = false; draw(); return;
     }
     if (t.closest('#oJoin')) {
       if (!/^[a-z0-9]{5}$/.test(joinCode)) { err = ['اكتب كود الغرفة (5 أحرف).', 'Type the 5-character room code.']; draw(); return; }
-      me.name = (me.name || '').trim() || L('لاعب', 'Player'); store.set('monopoly-sy-cfg', JSON.stringify({n:cnt, seats}));
+      me.name = (me.name || '').trim() || L('لاعب', 'Player'); store.set('monopoly-sy-cfg', JSON.stringify({n:cnt, seats, lv:aiLv}));
       if (wait) return; wait = true; err = null; draw();
       try { await NET.joinCode(joinCode); view = 'wait'; } catch (x) { err = x && x.code === 'no_room' ? ['ما في غرفة بهالكود، أو المضيف سكّر اللعبة. تأكد إنو صفحة المضيف مفتوحة.', 'No room with that code, or the host closed the game. Make sure the host has the game open.'] : x && x.code === 'net' ? ['ما قدرنا نوصل لخادم اللعب. جرّب شبكة تانية (واي فاي أو نت الموبايل).', 'Could not reach the game server. Try another network (Wi-Fi or mobile data).'] : ['ما قدرنا ندخل الغرفة. تأكد من الكود والإنترنت.', 'Could not join that room. Check the code and the internet.']; }
       wait = false; draw(); return;
